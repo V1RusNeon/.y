@@ -1,0 +1,4903 @@
+I want this to be a discord bot basically when you use
+/check "steamid/steamlink" and also another option that is optional "bmid/bmlink" 
+If used steamlink/steamid check by (now if used bmid/bmlink still have to check this if account can be found in the following explanation)
+Steam level
+* level 0-1 gifted/freshly bought possible cheater or a new player
+* level 2 or over could be legit
+Can be looked at even if the profile is private.
+Steam Badges 
+1 Badge possible cheater or new player
+2-.... could be legit
+Steam games
+* Owns Paid 1-3 Games high risk of being a cheater or a new player but highly doubt that.
+* Owns Paid 4 or over Games could be legit
+Steam hours
+* 0-900hours high risk of being a cheater or a new player
+* 1000 hours could be a legit player
+* over 3000-5000 hours BUT has under 40 achievements high risk of bought account and possible cheater.
+* over 6000-...hours BUT has under 65 achievements high risk of bought account and possible cheater.
+All of hours in steam could be fake so check by looking at BM
+All of the achievements could also be fake so check by looking at how many achievement he has gotten in a minute.
+* Under 5 possible
+* Over 5 possible fake achievements.
+Steam Groups 
+* 0 Groups possible cheater but also not many people join steam groups so could also be legit if has non
+Now if checked send what was found like: "level 0 suspicious, Owns 4 Paid Games looks legit" and etc 
+Everything of this can be also skipped if the account is set private besides the steam level.
+How to get the bmid/bmlink if it wasnt already entered is by using the code that ive going to give you.
+If used bmid/bmlink check by (now if used steamid/steamlink still have to check this if account can be found in the following explanation)
+BM hours
+* 0-500hours high risk of being a cheater or a new player
+* 600-5000 hours could be a legit 
+* Over 5000 hours most likely to be legit
+BM Identifiers
+Checks all of the names and tries to find a name alike in Player Filters and focuses only on banned people. 
+Sends all of the Players Current and past names and dates of the names.
+Logs all of the Players Current and past names and dates of the names.
+How to check bans is
+* If its anything else than a EAC its not rust
+* Compare their last play time on a server to the ban date. 
+How to find their steamid/steamlink to see if they are banned by EAC
+* Use the Search users option in Steam and find their Steam account. They have to own rust and the name has to match 100% or be a past name that they used but still matches. It takes quite some time.
+Dont use this if you already have the steamid.
+BM Servers
+* Under 30 servers possible cheater or a new player(check by the hours)
+* Over 30-60 could be legit
+* Over 60-... most likely to be legit
+Sends the full list of the servers they have played on, when and how many hours on whatever server they've played on
+Logs the Servers they've played on, when and how many hours on whatever the servers they've played on
+Everything of this can be also skipped if the account is set private.
+Persistent Tracking
+All accounts checked must be tracked continuously while the bot is running.
+If a private account becomes public, the bot updates the stored info immediately.
+Store data in a database/JSON: Steam info, BM info, name history, server history, achievements.
+Keep historical snapshots for all changes.
+Reporting
+Summarize all findings in a single message to the Discord channel. If its to big send the information in a txt file.
+Data Sources & APIs
+Steam Web API → Level, badges, games, hours, groups
+BattleMetrics API → Server history, playtime, bans, past names
+SteamDB → Optional fallback for achievements
+Database → Store tracked accounts, history, timestamps
+BM Account relationships
+Use BM to check if a steam listed friend in the users friends list is playing with him by also using the code to send the message to atlas and get his BM and by checking
+* If he owns rust. - if the steam account is private then you can try getting the BM trough atlas.
+* Has played on the same servers as the other person at the same dates or similar.
+You can use Neo4j / Gephi (graph visualization)
+Log if you find any of his teamates.
+Discord tracking
+Use my code that I send to find the players discord(make it better if possible) and also use discord.id, discord-tracker.com for Track account creation, past/current names, bio, status; detect alt accounts via behavior
+Log Track account creation, past/current names, bio, status; detect alt accounts via behavior
+YouTube lookup
+Try finding in Youtube trough social blade his youtube channel that posts rust content. 
+Log Track channel creation, uploads, deletions, username changes, hashtags
+Video OSINT
+If you cannot find his steamid/link/bm and etc. in the video. Use InVID, VLC/ffmpeg, OpenCV, Tesseract for his videos to find the server/discord/teams(friends)/his name to find his BM or steamid. Maybe read also the description for more maybe there is a discord server linked.
+Log Extract metadata, timestamps, player/server/discord names, OCR on video frames
+Now also another idea that I want a separate command for this like /hastag that it would look at popular rust hastags and Track channel creation, uploads, deletions, username changes, hashtags to find people in the future without trying to use social blade or whatever by already having their youtube and the video osint tool.
+Profile picture matching
+Try finding their youtube by profile picture matching if the name doesn't match if used the /hastag option (maybe can use for something else also)
+Now the last thing is when used the /check command it would find his ban if he is banned. use my code.
+
+this project doesnt have to be in 1 code. you can make it into multiple onces to make it better working or just faster or idk something but if you want you can make 1
+
+import asyncio
+import logging
+import json
+import sqlite3
+import re
+import time
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any, List, Tuple
+import aiohttp
+import discord
+from discord.ext import commands, tasks
+from pathlib import Path
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Configuration - Replace with your actual values
+class Config:
+    BOT_TOKEN = "YOUR_BOT_TOKEN"
+    SELF_BOT_TOKEN = "YOUR_SELF_BOT_TOKEN" 
+    STEAM_API_KEY = "YOUR_STEAM_API_KEY"
+    ATLAS_CHANNEL_ID = 123456789  # Atlas bot channel
+    ATLAS_BOT_USER_ID = 123456789  # Atlas bot user ID
+    BATTLEMETRICS_TOKEN = "YOUR_BM_TOKEN"  # Optional
+    
+class DatabaseManager:
+    def __init__(self, db_path="player_checker.db"):
+        self.db_path = db_path
+        self.init_database()
+    
+    def init_database(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Players table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS players (
+                steamid TEXT PRIMARY KEY,
+                steam_name TEXT,
+                steam_level INTEGER,
+                steam_badges INTEGER,
+                steam_games INTEGER,
+                steam_hours INTEGER,
+                steam_achievements INTEGER,
+                steam_groups INTEGER,
+                bm_id TEXT,
+                bm_hours INTEGER,
+                bm_servers INTEGER,
+                profile_private BOOLEAN,
+                last_updated TIMESTAMP,
+                risk_level TEXT
+            )
+        ''')
+        
+        # Name history table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS name_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                steamid TEXT,
+                bm_id TEXT,
+                name TEXT,
+                date_used TIMESTAMP,
+                platform TEXT
+            )
+        ''')
+        
+        # Server history table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS server_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                steamid TEXT,
+                bm_id TEXT,
+                server_name TEXT,
+                server_id TEXT,
+                hours_played REAL,
+                last_seen TIMESTAMP
+            )
+        ''')
+        
+        # Bans table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS bans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                steamid TEXT,
+                bm_id TEXT,
+                ban_type TEXT,
+                ban_reason TEXT,
+                ban_date TIMESTAMP,
+                server_name TEXT
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    def get_connection(self):
+        return sqlite3.connect(self.db_path)
+    
+    def save_player(self, player_data: Dict):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO players 
+            (steamid, steam_name, steam_level, steam_badges, steam_games, 
+             steam_hours, steam_achievements, steam_groups, bm_id, bm_hours, 
+             bm_servers, profile_private, last_updated, risk_level)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            player_data.get('steamid'),
+            player_data.get('steam_name'),
+            player_data.get('steam_level'),
+            player_data.get('steam_badges'),
+            player_data.get('steam_games'),
+            player_data.get('steam_hours'),
+            player_data.get('steam_achievements'),
+            player_data.get('steam_groups'),
+            player_data.get('bm_id'),
+            player_data.get('bm_hours'),
+            player_data.get('bm_servers'),
+            player_data.get('profile_private'),
+            datetime.now(),
+            player_data.get('risk_level')
+        ))
+        
+        conn.commit()
+        conn.close()
+
+class SteamChecker:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.session = None
+    
+    async def get_session(self):
+        if not self.session or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+    
+    async def close(self):
+        if self.session and not self.session.closed:
+            await self.session.close()
+    
+    def extract_steamid(self, input_str: str) -> Optional[str]:
+        """Extract SteamID64 from various formats"""
+        # Steam profile URL
+        match = re.search(r'steamcommunity\.com/profiles/(\d+)', input_str)
+        if match:
+            return match.group(1)
+        
+        # Direct SteamID64
+        if input_str.isdigit() and len(input_str) == 17:
+            return input_str
+        
+        # Steam vanity URL - would need additional API call
+        vanity_match = re.search(r'steamcommunity\.com/id/([^/]+)', input_str)
+        if vanity_match:
+            # Would need to resolve vanity URL to SteamID64
+            pass
+        
+        return input_str if input_str.isdigit() and len(input_str) == 17 else None
+    
+    async def get_player_summary(self, steamid: str) -> Dict:
+        session = await self.get_session()
+        url = f"http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/"
+        params = {
+            'key': self.api_key,
+            'steamids': steamid
+        }
+        
+        try:
+            async with session.get(url, params=params) as response:
+                data = await response.json()
+                players = data.get('response', {}).get('players', [])
+                return players[0] if players else {}
+        except Exception as e:
+            logger.error(f"Error getting Steam player summary: {e}")
+            return {}
+    
+    async def get_player_level(self, steamid: str) -> int:
+        session = await self.get_session()
+        url = f"http://api.steampowered.com/IPlayerService/GetSteamLevel/v1/"
+        params = {
+            'key': self.api_key,
+            'steamid': steamid
+        }
+        
+        try:
+            async with session.get(url, params=params) as response:
+                data = await response.json()
+                return data.get('response', {}).get('player_level', 0)
+        except Exception as e:
+            logger.error(f"Error getting Steam level: {e}")
+            return 0
+    
+    async def get_player_badges(self, steamid: str) -> int:
+        session = await self.get_session()
+        url = f"http://api.steampowered.com/IPlayerService/GetBadges/v1/"
+        params = {
+            'key': self.api_key,
+            'steamid': steamid
+        }
+        
+        try:
+            async with session.get(url, params=params) as response:
+                data = await response.json()
+                badges = data.get('response', {}).get('badges', [])
+                return len(badges)
+        except Exception as e:
+            logger.error(f"Error getting Steam badges: {e}")
+            return 0
+    
+    async def get_owned_games(self, steamid: str) -> Tuple[int, int]:
+        session = await self.get_session()
+        url = f"http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/"
+        params = {
+            'key': self.api_key,
+            'steamid': steamid,
+            'format': 'json',
+            'include_appinfo': 1,
+            'include_played_free_games': 1
+        }
+        
+        try:
+            async with session.get(url, params=params) as response:
+                data = await response.json()
+                games = data.get('response', {}).get('games', [])
+                
+                # Count paid games (rough estimation based on common free games)
+                free_game_ids = {440, 570, 730}  # TF2, Dota 2, CS:GO (when free)
+                paid_games = [g for g in games if g.get('appid') not in free_game_ids]
+                
+                total_hours = sum(g.get('playtime_forever', 0) for g in games) // 60
+                
+                return len(paid_games), total_hours
+        except Exception as e:
+            logger.error(f"Error getting owned games: {e}")
+            return 0, 0
+    
+    async def get_player_achievements(self, steamid: str) -> int:
+        # This would require checking specific games for achievements
+        # For now, return 0 - implement specific game achievement checking as needed
+        return 0
+    
+    async def analyze_player(self, steamid: str) -> Dict:
+        """Perform complete Steam analysis"""
+        player_summary = await self.get_player_summary(steamid)
+        
+        if not player_summary:
+            return {'error': 'Player not found'}
+        
+        # Check if profile is private
+        profile_private = player_summary.get('communityvisibilitystate', 1) != 3
+        
+        result = {
+            'steamid': steamid,
+            'steam_name': player_summary.get('personaname', 'Unknown'),
+            'profile_private': profile_private,
+            'profile_url': player_summary.get('profileurl', ''),
+            'avatar_url': player_summary.get('avatarfull', ''),
+            'risk_factors': [],
+            'risk_level': 'Unknown'
+        }
+        
+        if not profile_private:
+            # Get detailed info for public profiles
+            level = await self.get_player_level(steamid)
+            badges = await self.get_player_badges(steamid)
+            paid_games, total_hours = await self.get_owned_games(steamid)
+            achievements = await self.get_player_achievements(steamid)
+            
+            result.update({
+                'steam_level': level,
+                'steam_badges': badges,
+                'steam_games': paid_games,
+                'steam_hours': total_hours,
+                'steam_achievements': achievements,
+                'steam_groups': 0  # Would need additional API call
+            })
+            
+            # Risk analysis
+            risk_factors = []
+            
+            # Level check
+            if level <= 1:
+                risk_factors.append("Low Steam level (0-1) - possible new account or cheater")
+            elif level >= 2:
+                risk_factors.append("Steam level looks legitimate (2+)")
+            
+            # Badge check
+            if badges <= 1:
+                risk_factors.append("Few badges (≤1) - possible new account")
+            else:
+                risk_factors.append(f"Badge count looks normal ({badges})")
+            
+            # Games check
+            if paid_games <= 3:
+                risk_factors.append(f"Few paid games ({paid_games}) - high risk")
+            else:
+                risk_factors.append(f"Good game library ({paid_games} paid games)")
+            
+            # Hours check
+            if total_hours < 900:
+                risk_factors.append(f"Low playtime ({total_hours}h) - high risk")
+            elif total_hours >= 1000:
+                risk_factors.append(f"Good playtime ({total_hours}h)")
+            
+            # Bought account indicators
+            if total_hours > 3000 and achievements < 40:
+                risk_factors.append("High hours but low achievements - possible bought account")
+            elif total_hours > 6000 and achievements < 65:
+                risk_factors.append("Very high hours but low achievements - possible bought account")
+            
+            result['risk_factors'] = risk_factors
+            
+            # Overall risk assessment
+            high_risk_count = sum(1 for factor in risk_factors if "high risk" in factor.lower() or "possible" in factor.lower())
+            if high_risk_count >= 2:
+                result['risk_level'] = "High Risk"
+            elif high_risk_count == 1:
+                result['risk_level'] = "Medium Risk"
+            else:
+                result['risk_level'] = "Low Risk"
+        
+        else:
+            # For private profiles, we can only get level
+            level = await self.get_player_level(steamid)
+            result['steam_level'] = level
+            
+            if level <= 1:
+                result['risk_factors'] = ["Low Steam level (0-1) - suspicious for private profile"]
+                result['risk_level'] = "High Risk"
+            else:
+                result['risk_factors'] = ["Profile private - limited analysis possible"]
+                result['risk_level'] = "Medium Risk"
+        
+        return result
+
+class BattleMetricsChecker:
+    def __init__(self, token: Optional[str] = None):
+        self.token = token
+        self.session = None
+        self.base_url = "https://api.battlemetrics.com"
+    
+    async def get_session(self):
+        if not self.session or self.session.closed:
+            headers = {}
+            if self.token:
+                headers['Authorization'] = f'Bearer {self.token}'
+            self.session = aiohttp.ClientSession(headers=headers)
+        return self.session
+    
+    async def close(self):
+        if self.session and not self.session.closed:
+            await self.session.close()
+    
+    def extract_bm_id(self, input_str: str) -> Optional[str]:
+        """Extract BattleMetrics ID from URL or return ID directly"""
+        match = re.search(r'battlemetrics\.com/(?:rcon/)?players/(\d+)', input_str)
+        if match:
+            return match.group(1)
+        return input_str if input_str.isdigit() else None
+    
+    async def get_player_info(self, bm_id: str) -> Dict:
+        """Get BattleMetrics player information"""
+        session = await self.get_session()
+        url = f"{self.base_url}/players/{bm_id}"
+        
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('data', {})
+                else:
+                    return {}
+        except Exception as e:
+            logger.error(f"Error getting BM player info: {e}")
+            return {}
+    
+    async def get_player_servers(self, bm_id: str) -> List[Dict]:
+        """Get servers where player has been active"""
+        session = await self.get_session()
+        url = f"{self.base_url}/players/{bm_id}/servers"
+        
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('data', [])
+                else:
+                    return []
+        except Exception as e:
+            logger.error(f"Error getting BM servers: {e}")
+            return []
+    
+    async def get_player_names(self, bm_id: str) -> List[Dict]:
+        """Get player name history"""
+        session = await self.get_session()
+        url = f"{self.base_url}/players/{bm_id}/identifiers"
+        
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('data', [])
+                else:
+                    return []
+        except Exception as e:
+            logger.error(f"Error getting BM names: {e}")
+            return []
+    
+    async def analyze_player(self, bm_id: str) -> Dict:
+        """Perform complete BattleMetrics analysis"""
+        player_info = await self.get_player_info(bm_id)
+        
+        if not player_info:
+            return {'error': 'Player not found on BattleMetrics'}
+        
+        attributes = player_info.get('attributes', {})
+        
+        result = {
+            'bm_id': bm_id,
+            'bm_name': attributes.get('name', 'Unknown'),
+            'bm_hours': 0,
+            'bm_servers': 0,
+            'private': attributes.get('private', False),
+            'risk_factors': [],
+            'risk_level': 'Unknown'
+        }
+        
+        if not result['private']:
+            # Get server history
+            servers = await self.get_player_servers(bm_id)
+            names = await self.get_player_names(bm_id)
+            
+            # Calculate total hours and server count
+            total_hours = 0
+            for server in servers:
+                server_attrs = server.get('attributes', {})
+                total_hours += server_attrs.get('timePlayed', 0) / 3600  # Convert to hours
+            
+            result.update({
+                'bm_hours': round(total_hours, 1),
+                'bm_servers': len(servers),
+                'name_history': names[:10],  # Limit to recent names
+                'server_history': servers[:20]  # Limit to recent servers
+            })
+            
+            # Risk analysis
+            risk_factors = []
+            
+            # Hours check
+            if total_hours < 500:
+                risk_factors.append(f"Low BM hours ({total_hours:.1f}h) - high risk")
+            elif 600 <= total_hours <= 5000:
+                risk_factors.append(f"Good BM hours ({total_hours:.1f}h)")
+            else:
+                risk_factors.append(f"High BM hours ({total_hours:.1f}h) - likely legit")
+            
+            # Server count check
+            if len(servers) < 30:
+                risk_factors.append(f"Few servers ({len(servers)}) - possible new player")
+            elif 30 <= len(servers) <= 60:
+                risk_factors.append(f"Normal server count ({len(servers)})")
+            else:
+                risk_factors.append(f"Many servers ({len(servers)}) - likely legit")
+            
+            result['risk_factors'] = risk_factors
+            
+            # Overall risk
+            high_risk_count = sum(1 for factor in risk_factors if "high risk" in factor.lower())
+            if high_risk_count >= 1:
+                result['risk_level'] = "High Risk"
+            elif "new player" in str(risk_factors).lower():
+                result['risk_level'] = "Medium Risk"
+            else:
+                result['risk_level'] = "Low Risk"
+        
+        else:
+            result['risk_factors'] = ["BattleMetrics profile is private"]
+            result['risk_level'] = "Medium Risk"
+        
+        return result
+
+class PlayerCheckerBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix='/', intents=intents)
+        
+        self.db = DatabaseManager()
+        self.steam_checker = SteamChecker(Config.STEAM_API_KEY)
+        self.bm_checker = BattleMetricsChecker(Config.BATTLEMETRICS_TOKEN)
+        
+    async def setup_hook(self):
+        """Called when bot is ready"""
+        logger.info(f"Bot {self.user} is ready!")
+        
+    async def close(self):
+        """Cleanup when bot shuts down"""
+        await self.steam_checker.close()
+        await self.bm_checker.close()
+        await super().close()
+
+bot = PlayerCheckerBot()
+
+@bot.tree.command(name="check", description="Check a player across Steam and BattleMetrics")
+async def check_player(interaction: discord.Interaction, 
+                      steam_input: str, 
+                      bm_input: Optional[str] = None):
+    """Main check command"""
+    await interaction.response.defer()
+    
+    # Extract IDs
+    steamid = bot.steam_checker.extract_steamid(steam_input)
+    bm_id = bot.bm_checker.extract_bm_id(bm_input) if bm_input else None
+    
+    if not steamid:
+        await interaction.followup.send("❌ Invalid Steam ID or URL provided")
+        return
+    
+    try:
+        # Perform checks
+        steam_result = await bot.steam_checker.analyze_player(steamid)
+        bm_result = None
+        
+        if bm_id:
+            bm_result = await bot.bm_checker.analyze_player(bm_id)
+        
+        # Format response
+        embed = discord.Embed(
+            title="🔍 Player Analysis Report",
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        
+        # Steam section
+        if 'error' not in steam_result:
+            steam_name = steam_result.get('steam_name', 'Unknown')
+            risk_level = steam_result.get('risk_level', 'Unknown')
+            
+            # Set embed color based on risk
+            if risk_level == "High Risk":
+                embed.color = discord.Color.red()
+            elif risk_level == "Medium Risk":
+                embed.color = discord.Color.orange()
+            else:
+                embed.color = discord.Color.green()
+            
+            embed.add_field(
+                name="🎮 Steam Profile",
+                value=f"**Name:** {steam_name}\n**SteamID:** {steamid}\n**Risk Level:** {risk_level}",
+                inline=False
+            )
+            
+            # Steam details for public profiles
+            if not steam_result.get('profile_private', True):
+                steam_details = []
+                if 'steam_level' in steam_result:
+                    steam_details.append(f"Level: {steam_result['steam_level']}")
+                if 'steam_badges' in steam_result:
+                    steam_details.append(f"Badges: {steam_result['steam_badges']}")
+                if 'steam_games' in steam_result:
+                    steam_details.append(f"Paid Games: {steam_result['steam_games']}")
+                if 'steam_hours' in steam_result:
+                    steam_details.append(f"Total Hours: {steam_result['steam_hours']}")
+                
+                if steam_details:
+                    embed.add_field(
+                        name="📊 Steam Stats",
+                        value="\n".join(steam_details),
+                        inline=True
+                    )
+            
+            # Risk factors
+            if steam_result.get('risk_factors'):
+                risk_text = "\n".join(f"• {factor}" for factor in steam_result['risk_factors'][:5])
+                embed.add_field(
+                    name="⚠️ Risk Analysis",
+                    value=risk_text,
+                    inline=False
+                )
+        
+        # BattleMetrics section
+        if bm_result and 'error' not in bm_result:
+            bm_name = bm_result.get('bm_name', 'Unknown')
+            bm_risk = bm_result.get('risk_level', 'Unknown')
+            
+            embed.add_field(
+                name="🎯 BattleMetrics Profile",
+                value=f"**Name:** {bm_name}\n**BM ID:** {bm_id}\n**Risk Level:** {bm_risk}",
+                inline=False
+            )
+            
+            if not bm_result.get('private', True):
+                bm_details = []
+                if 'bm_hours' in bm_result:
+                    bm_details.append(f"Hours: {bm_result['bm_hours']}")
+                if 'bm_servers' in bm_result:
+                    bm_details.append(f"Servers: {bm_result['bm_servers']}")
+                
+                if bm_details:
+                    embed.add_field(
+                        name="📈 BattleMetrics Stats",
+                        value="\n".join(bm_details),
+                        inline=True
+                    )
+        
+        # Save to database
+        player_data = {
+            'steamid': steamid,
+            **{k: v for k, v in steam_result.items() if not k.startswith('risk')},
+            **(bm_result or {}),
+            'risk_level': steam_result.get('risk_level', 'Unknown')
+        }
+        bot.db.save_player(player_data)
+        
+        embed.set_footer(text="Player data saved to database")
+        
+        await interaction.followup.send(embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error in check command: {e}")
+        await interaction.followup.send("❌ An error occurred during the check")
+
+@bot.tree.command(name="ban_check", description="Check if a player is banned")
+async def ban_check(interaction: discord.Interaction, steam_input: str):
+    """Check for bans using provided code logic"""
+    await interaction.response.defer()
+    
+    steamid = bot.steam_checker.extract_steamid(steam_input)
+    if not steamid:
+        await interaction.followup.send("❌ Invalid Steam ID provided")
+        return
+    
+    # This would integrate with your existing ban checking code
+    # For now, placeholder response
+    embed = discord.Embed(
+        title="🚫 Ban Check Results",
+        description="Ban checking functionality would be integrated here",
+        color=discord.Color.blue()
+    )
+    
+    await interaction.followup.send(embed=embed)
+
+@bot.event
+async def on_ready():
+    try:
+        synced = await bot.tree.sync()
+        logger.info(f"Synced {len(synced)} commands")
+    except Exception as e:
+        logger.error(f"Failed to sync commands: {e}")
+
+if __name__ == "__main__":
+    bot.run(Config.BOT_TOKEN)
+
+import asyncio
+import aiohttp
+import json
+import sqlite3
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional
+import re
+import logging
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+class YouTubeHashtagTracker:
+    def __init__(self, db_path="youtube_tracker.db", youtube_api_key=None):
+        self.db_path = db_path
+        self.api_key = youtube_api_key
+        self.session = None
+        self.init_database()
+        
+        # Popular Rust hashtags to track
+        self.rust_hashtags = [
+            "rust", "rustgame", "facepunch", "rustsurvival", "rustpvp",
+            "rustwipe", "rustcontent", "rustgameplay", "rustclips",
+            "rustmoments", "rustbuild", "rustbase", "rustraid",
+            "rustclan", "rustserver", "rusttips", "rustguide"
+        ]
+    
+    def init_database(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # YouTube channels table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS youtube_channels (
+                channel_id TEXT PRIMARY KEY,
+                channel_name TEXT,
+                subscriber_count INTEGER,
+                video_count INTEGER,
+                view_count INTEGER,
+                created_date TIMESTAMP,
+                last_updated TIMESTAMP,
+                rust_content BOOLEAN,
+                hashtags_used TEXT
+            )
+        ''')
+        
+        # Videos table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS youtube_videos (
+                video_id TEXT PRIMARY KEY,
+                channel_id TEXT,
+                title TEXT,
+                description TEXT,
+                published_at TIMESTAMP,
+                view_count INTEGER,
+                like_count INTEGER,
+                comment_count INTEGER,
+                hashtags TEXT,
+                rust_related BOOLEAN,
+                metadata_extracted TEXT,
+                last_updated TIMESTAMP
+            )
+        ''')
+        
+        # Hashtag tracking table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS hashtag_tracking (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hashtag TEXT,
+                video_id TEXT,
+                channel_id TEXT,
+                usage_date TIMESTAMP,
+                video_views INTEGER,
+                video_title TEXT
+            )
+        ''')
+        
+        # Username tracking table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS username_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id TEXT,
+                old_username TEXT,
+                new_username TEXT,
+                change_date TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    async def get_session(self):
+        if not self.session or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+    
+    async def close(self):
+        if self.session and not self.session.closed:
+            await self.session.close()
+    
+    async def search_youtube_by_hashtag(self, hashtag: str, max_results=50) -> List[Dict]:
+        """Search YouTube for videos with specific hashtags"""
+        if not self.api_key:
+            logger.warning("No YouTube API key provided")
+            return []
+        
+        session = await self.get_session()
+        url = "https://www.googleapis.com/youtube/v3/search"
+        
+        params = {
+            'part': 'snippet,statistics',
+            'id': video_id_string,
+            'key': self.api_key
+        }
+        
+        try:
+            async with session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('items', [])
+                else:
+                    logger.error(f"YouTube API error: {response.status}")
+                    return []
+        except Exception as e:
+            logger.error(f"Error getting video details: {e}")
+            return []
+    
+    async def get_channel_details(self, channel_id: str) -> Dict:
+        """Get detailed information about a channel"""
+        if not self.api_key:
+            return {}
+        
+        session = await self.get_session()
+        url = "https://www.googleapis.com/youtube/v3/channels"
+        
+        params = {
+            'part': 'snippet,statistics',
+            'id': channel_id,
+            'key': self.api_key
+        }
+        
+        try:
+            async with session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    items = data.get('items', [])
+                    return items[0] if items else {}
+                else:
+                    logger.error(f"YouTube API error: {response.status}")
+                    return {}
+        except Exception as e:
+            logger.error(f"Error getting channel details: {e}")
+            return {}
+    
+    def extract_hashtags(self, text: str) -> List[str]:
+        """Extract hashtags from video title/description"""
+        hashtag_pattern = r'#\w+'
+        hashtags = re.findall(hashtag_pattern, text.lower())
+        return [tag[1:] for tag in hashtags]  # Remove # symbol
+    
+    def is_rust_related(self, title: str, description: str, hashtags: List[str]) -> bool:
+        """Determine if content is Rust-related"""
+        rust_keywords = ['rust', 'facepunch', 'survival', 'wipe', 'ak47', 'raid', 'base building']
+        
+        text = (title + " " + description).lower()
+        hashtag_text = " ".join(hashtags).lower()
+        
+        # Check for Rust keywords
+        for keyword in rust_keywords:
+            if keyword in text or keyword in hashtag_text:
+                return True
+        
+        return False
+    
+    async def track_hashtags(self) -> Dict[str, int]:
+        """Track all configured hashtags and return statistics"""
+        results = {}
+        
+        for hashtag in self.rust_hashtags:
+            videos = await self.search_youtube_by_hashtag(hashtag)
+            results[hashtag] = len(videos)
+            
+            # Get detailed info for each video
+            video_ids = [video['id']['videoId'] for video in videos if 'id' in video]
+            detailed_videos = await self.get_video_details(video_ids)
+            
+            # Store in database
+            await self.store_hashtag_results(hashtag, detailed_videos)
+            
+            # Rate limiting
+            await asyncio.sleep(1)
+        
+        return results
+    
+    async def store_hashtag_results(self, hashtag: str, videos: List[Dict]):
+        """Store hashtag tracking results in database"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        for video in videos:
+            try:
+                snippet = video.get('snippet', {})
+                statistics = video.get('statistics', {})
+                
+                video_id = video.get('id')
+                channel_id = snippet.get('channelId')
+                title = snippet.get('title', '')
+                description = snippet.get('description', '')
+                
+                # Extract hashtags from title and description
+                video_hashtags = self.extract_hashtags(title + " " + description)
+                rust_related = self.is_rust_related(title, description, video_hashtags)
+                
+                # Insert/update video
+                cursor.execute('''
+                    INSERT OR REPLACE INTO youtube_videos 
+                    (video_id, channel_id, title, description, published_at, 
+                     view_count, like_count, comment_count, hashtags, rust_related, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    video_id,
+                    channel_id,
+                    title,
+                    description,
+                    snippet.get('publishedAt'),
+                    int(statistics.get('viewCount', 0)),
+                    int(statistics.get('likeCount', 0)),
+                    int(statistics.get('commentCount', 0)),
+                    json.dumps(video_hashtags),
+                    rust_related,
+                    datetime.now()
+                ))
+                
+                # Track hashtag usage
+                cursor.execute('''
+                    INSERT INTO hashtag_tracking 
+                    (hashtag, video_id, channel_id, usage_date, video_views, video_title)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    hashtag,
+                    video_id,
+                    channel_id,
+                    datetime.now(),
+                    int(statistics.get('viewCount', 0)),
+                    title
+                ))
+                
+                # Get and store channel info if not exists
+                await self.store_channel_info(channel_id)
+                
+            except Exception as e:
+                logger.error(f"Error storing video {video.get('id', 'unknown')}: {e}")
+        
+        conn.commit()
+        conn.close()
+    
+    async def store_channel_info(self, channel_id: str):
+        """Store or update channel information"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Check if channel exists
+        cursor.execute('SELECT channel_id FROM youtube_channels WHERE channel_id = ?', (channel_id,))
+        if cursor.fetchone():
+            conn.close()
+            return
+        
+        # Get channel details
+        channel_info = await self.get_channel_details(channel_id)
+        if not channel_info:
+            conn.close()
+            return
+        
+        snippet = channel_info.get('snippet', {})
+        statistics = channel_info.get('statistics', {})
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO youtube_channels 
+            (channel_id, channel_name, subscriber_count, video_count, view_count, 
+             created_date, last_updated, rust_content)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            channel_id,
+            snippet.get('title', ''),
+            int(statistics.get('subscriberCount', 0)),
+            int(statistics.get('videoCount', 0)),
+            int(statistics.get('viewCount', 0)),
+            snippet.get('publishedAt'),
+            datetime.now(),
+            True  # Assume rust content since found via rust hashtags
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    async def search_channel_by_name(self, username: str) -> List[Dict]:
+        """Search for YouTube channels by username"""
+        if not self.api_key:
+            return []
+        
+        session = await self.get_session()
+        url = "https://www.googleapis.com/youtube/v3/search"
+        
+        params = {
+            'part': 'snippet',
+            'q': username,
+            'type': 'channel',
+            'maxResults': 10,
+            'key': self.api_key
+        }
+        
+        try:
+            async with session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('items', [])
+                else:
+                    return []
+        except Exception as e:
+            logger.error(f"Error searching channels: {e}")
+            return []
+    
+    async def find_rust_youtubers(self, username_hint: str = None) -> List[Dict]:
+        """Find YouTube channels that post Rust content"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        query = '''
+            SELECT DISTINCT yc.channel_id, yc.channel_name, yc.subscriber_count, 
+                   COUNT(yv.video_id) as rust_videos
+            FROM youtube_channels yc
+            JOIN youtube_videos yv ON yc.channel_id = yv.channel_id
+            WHERE yv.rust_related = 1
+        '''
+        
+        params = []
+        if username_hint:
+            query += ' AND yc.channel_name LIKE ?'
+            params.append(f'%{username_hint}%')
+        
+        query += ' GROUP BY yc.channel_id ORDER BY rust_videos DESC, yc.subscriber_count DESC'
+        
+        cursor.execute(query, params)
+        results = cursor.fetchall()
+        
+        channels = []
+        for row in results:
+            channels.append({
+                'channel_id': row[0],
+                'channel_name': row[1],
+                'subscriber_count': row[2],
+                'rust_videos': row[3]
+            })
+        
+        conn.close()
+        return channels
+    
+    async def get_hashtag_statistics(self) -> Dict:
+        """Get statistics about hashtag usage"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Most used hashtags
+        cursor.execute('''
+            SELECT hashtag, COUNT(*) as usage_count, AVG(video_views) as avg_views
+            FROM hashtag_tracking 
+            WHERE usage_date >= date('now', '-30 days')
+            GROUP BY hashtag 
+            ORDER BY usage_count DESC
+        ''')
+        
+        hashtag_stats = []
+        for row in cursor.fetchall():
+            hashtag_stats.append({
+                'hashtag': row[0],
+                'usage_count': row[1],
+                'avg_views': round(row[2], 0) if row[2] else 0
+            })
+        
+        # Channel activity
+        cursor.execute('''
+            SELECT yc.channel_name, COUNT(ht.video_id) as videos_tracked
+            FROM hashtag_tracking ht
+            JOIN youtube_channels yc ON ht.channel_id = yc.channel_id
+            WHERE ht.usage_date >= date('now', '-30 days')
+            GROUP BY ht.channel_id
+            ORDER BY videos_tracked DESC
+            LIMIT 10
+        ''')
+        
+        top_channels = []
+        for row in cursor.fetchall():
+            top_channels.append({
+                'channel_name': row[0],
+                'videos_tracked': row[1]
+            })
+        
+        conn.close()
+        
+        return {
+            'hashtag_stats': hashtag_stats[:15],
+            'top_channels': top_channels,
+            'last_updated': datetime.now().isoformat()
+        }
+
+
+# Discord Bot Integration
+import discord
+from discord.ext import commands
+
+class HashtagCommands(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.tracker = YouTubeHashtagTracker(youtube_api_key="YOUR_YOUTUBE_API_KEY")
+    
+    @commands.slash_command(name="hashtag", description="Track Rust YouTubers by hashtags")
+    async def hashtag_track(self, ctx, action: str = "stats"):
+        """
+        Track Rust content creators via hashtags
+        Actions: stats, track, search
+        """
+        await ctx.defer()
+        
+        if action == "track":
+            # Run hashtag tracking
+            await ctx.followup.send("🔍 Starting hashtag tracking... This may take a few minutes.")
+            
+            results = await self.tracker.track_hashtags()
+            
+            embed = discord.Embed(
+                title="📊 Hashtag Tracking Results",
+                color=discord.Color.green()
+            )
+            
+            for hashtag, count in list(results.items())[:10]:
+                embed.add_field(
+                    name=f"#{hashtag}",
+                    value=f"{count} videos found",
+                    inline=True
+                )
+            
+            await ctx.followup.send(embed=embed)
+        
+        elif action == "stats":
+            # Show hashtag statistics
+            stats = await self.tracker.get_hashtag_statistics()
+            
+            embed = discord.Embed(
+                title="📈 Hashtag Usage Statistics (Last 30 Days)",
+                color=discord.Color.blue()
+            )
+            
+            # Top hashtags
+            hashtag_text = ""
+            for stat in stats['hashtag_stats'][:10]:
+                hashtag_text += f"#{stat['hashtag']}: {stat['usage_count']} uses (avg {stat['avg_views']} views)\n"
+            
+            if hashtag_text:
+                embed.add_field(
+                    name="🏷️ Most Used Hashtags",
+                    value=hashtag_text,
+                    inline=False
+                )
+            
+            # Top channels
+            channel_text = ""
+            for channel in stats['top_channels'][:5]:
+                channel_text += f"{channel['channel_name']}: {channel['videos_tracked']} videos\n"
+            
+            if channel_text:
+                embed.add_field(
+                    name="🎥 Most Active Channels",
+                    value=channel_text,
+                    inline=False
+                )
+            
+            await ctx.followup.send(embed=embed)
+        
+        elif action == "search":
+            # Find Rust YouTubers
+            channels = await self.tracker.find_rust_youtubers()
+            
+            if not channels:
+                await ctx.followup.send("❌ No Rust YouTubers found in database. Run hashtag tracking first.")
+                return
+            
+            embed = discord.Embed(
+                title="🎮 Rust Content Creators Found",
+                color=discord.Color.orange()
+            )
+            
+            for i, channel in enumerate(channels[:10], 1):
+                embed.add_field(
+                    name=f"{i}. {channel['channel_name']}",
+                    value=f"Subscribers: {channel['subscriber_count']:,}\nRust Videos: {channel['rust_videos']}",
+                    inline=True
+                )
+            
+            await ctx.followup.send(embed=embed)
+    
+    def cog_unload(self):
+        asyncio.create_task(self.tracker.close())
+
+# Usage example:
+# bot.add_cog(HashtagCommands(bot))': 'snippet',
+            'q': f'#{hashtag}',
+            'type': 'video',
+            'maxResults': max_results,
+            'key': self.api_key,
+            'order': 'date',
+            'publishedAfter': (datetime.now() - timedelta(days=30)).isoformat() + 'Z'
+        }
+        
+        try:
+            async with session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('items', [])
+                else:
+                    logger.error(f"YouTube API error: {response.status}")
+                    return []
+        except Exception as e:
+            logger.error(f"Error searching YouTube: {e}")
+            return []
+    
+    async def get_video_details(self, video_ids: List[str]) -> List[Dict]:
+        """Get detailed information about videos"""
+        if not self.api_key or not video_ids:
+            return []
+        
+        session = await self.get_session()
+        url = "https://www.googleapis.com/youtube/v3/videos"
+        
+        # YouTube API allows up to 50 IDs per request
+        video_id_string = ','.join(video_ids[:50])
+        
+        params = {
+            'part
+
+import asyncio
+import aiohttp
+import cv2
+import numpy as np
+from PIL import Image, ImageHash
+import pytesseract
+import sqlite3
+import json
+import re
+from datetime import datetime
+from typing import List, Dict, Optional, Tuple
+import logging
+from pathlib import Path
+import tempfile
+import os
+import hashlib
+from urllib.parse import urlparse, parse_qs
+import base64
+
+logger = logging.getLogger(__name__)
+
+class VideoOSINT:
+    def __init__(self, db_path="video_osint.db"):
+        self.db_path = db_path
+        self.session = None
+        self.init_database()
+        
+        # Common server name patterns for Rust
+        self.server_patterns = [
+            r'[\[\(]([^[\]()]*(?:server|srv|rust)[^[\]()]*?)[\]\)]',
+            r'(rustafied|facepunch|oxide|umod)[\w\s]*',
+            r'(\d+x|\dx\d+|vanilla|modded|pve|pvp)[\w\s]*',
+            r'([A-Z]{2,}\s*[A-Z\s]*(?:RUST|SERVER))',
+            r'(wipe\s*\w*|fresh\s*wipe)',
+        ]
+        
+        # Discord invite patterns
+        self.discord_patterns = [
+            r'discord\.gg/([a-zA-Z0-9]+)',
+            r'discord\.com/invite/([a-zA-Z0-9]+)',
+            r'discordapp\.com/invite/([a-zA-Z0-9]+)'
+        ]
+        
+        # Steam profile patterns
+        self.steam_patterns = [
+            r'steamcommunity\.com/profiles/(\d+)',
+            r'steamcommunity\.com/id/([^/\s]+)',
+        ]
+    
+    def init_database(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Video analysis results
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS video_analysis (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_url TEXT,
+                video_id TEXT,
+                channel_id TEXT,
+                analysis_date TIMESTAMP,
+                extracted_text TEXT,
+                server_names TEXT,
+                discord_invites TEXT,
+                steam_profiles TEXT,
+                player_names TEXT,
+                timestamps TEXT,
+                metadata TEXT
+            )
+        ''')
+        
+        # Profile picture hashes
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS profile_pictures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_url TEXT,
+                platform TEXT,
+                username TEXT,
+                image_hash TEXT,
+                dhash TEXT,
+                phash TEXT,
+                file_path TEXT,
+                upload_date TIMESTAMP
+            )
+        ''')
+        
+        # Cross-platform matches
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS profile_matches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile1_id INTEGER,
+                profile2_id INTEGER,
+                match_score REAL,
+                match_type TEXT,
+                verified BOOLEAN,
+                match_date TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    async def get_session(self):
+        if not self.session or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+    
+    async def close(self):
+        if self.session and not self.session.closed:
+            await self.session.close()
+    
+    async def download_video(self, video_url: str) -> Optional[str]:
+        """Download video to temporary file for analysis"""
+        try:
+            # Use yt-dlp or similar to download video
+            # For this example, we'll simulate with a placeholder
+            session = await self.get_session()
+            
+            # This would integrate with yt-dlp
+            # For now, return a placeholder path
+            temp_dir = tempfile.mkdtemp()
+            video_path = os.path.join(temp_dir, "video.mp4")
+            
+            # Actual implementation would download the video here
+            # async with session.get(video_url) as response:
+            #     with open(video_path, 'wb') as f:
+            #         async for chunk in response.content.iter_chunked(8192):
+            #             f.write(chunk)
+            
+            return video_path
+        except Exception as e:
+            logger.error(f"Error downloading video: {e}")
+            return None
+    
+    def extract_frames(self, video_path: str, interval: int = 30) -> List[str]:
+        """Extract frames from video at specified intervals"""
+        frame_paths = []
+        
+        try:
+            cap = cv2.VideoCapture(video_path)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_interval = int(fps * interval)  # Extract frame every N seconds
+            
+            frame_count = 0
+            extracted_count = 0
+            
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                if frame_count % frame_interval == 0:
+                    frame_path = f"{video_path}_frame_{extracted_count}.jpg"
+                    cv2.imwrite(frame_path, frame)
+                    frame_paths.append(frame_path)
+                    extracted_count += 1
+                
+                frame_count += 1
+            
+            cap.release()
+            return frame_paths
+            
+        except Exception as e:
+            logger.error(f"Error extracting frames: {e}")
+            return []
+    
+    def ocr_text_from_image(self, image_path: str) -> str:
+        """Extract text from image using OCR"""
+        try:
+            # Use pytesseract for OCR
+            image = Image.open(image_path)
+            text = pytesseract.image_to_string(image)
+            return text.strip()
+        except Exception as e:
+            logger.error(f"Error in OCR: {e}")
+            return ""
+    
+    def extract_information(self, text: str) -> Dict:
+        """Extract server names, Discord invites, Steam profiles from text"""
+        extracted = {
+            'server_names': [],
+            'discord_invites': [],
+            'steam_profiles': [],
+            'player_names': []
+        }
+        
+        # Extract server names
+        for pattern in self.server_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            extracted['server_names'].extend([match.strip() for match in matches if match.strip()])
+        
+        # Extract Discord invites
+        for pattern in self.discord_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            extracted['discord_invites'].extend(matches)
+        
+        # Extract Steam profiles
+        for pattern in self.steam_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            extracted['steam_profiles'].extend(matches)
+        
+        # Extract potential player names (words that look like usernames)
+        username_pattern = r'\b[A-Za-z0-9_]{3,16}\b'
+        potential_names = re.findall(username_pattern, text)
+        # Filter out common words
+        common_words = {'the', 'and', 'for', 'you', 'are', 'not', 'can', 'get', 'all', 'new', 'now'}
+        extracted['player_names'] = [name for name in potential_names 
+                                   if name.lower() not in common_words and len(name) > 3]
+        
+        return extracted
+    
+    async def analyze_video(self, video_url: str) -> Dict:
+        """Complete video analysis pipeline"""
+        try:
+            # Download video
+            video_path = await self.download_video(video_url)
+            if not video_path:
+                return {'error': 'Could not download video'}
+            
+            # Extract frames
+            frame_paths = self.extract_frames(video_path)
+            if not frame_paths:
+                return {'error': 'Could not extract frames'}
+            
+            # Perform OCR on each frame
+            all_text = ""
+            extracted_info = {
+                'server_names': set(),
+                'discord_invites': set(),
+                'steam_profiles': set(),
+                'player_names': set(),
+                'timestamps': []
+            }
+            
+            for i, frame_path in enumerate(frame_paths):
+                text = self.ocr_text_from_image(frame_path)
+                if text:
+                    all_text += f"\n--- Frame {i} ---\n{text}\n"
+                    
+                    # Extract information from this frame
+                    frame_info = self.extract_information(text)
+                    for key, values in frame_info.items():
+                        if isinstance(extracted_info[key], set):
+                            extracted_info[key].update(values)
+                    
+                    # Add timestamp for this frame
+                    timestamp = i * 30  # 30 second intervals
+                    extracted_info['timestamps'].append({
+                        'frame': i,
+                        'timestamp': timestamp,
+                        'text_found': bool(text.strip())
+                    })
+                
+                # Clean up frame file
+                try:
+                    os.remove(frame_path)
+                except:
+                    pass
+            
+            # Convert sets to lists for JSON serialization
+            for key in extracted_info:
+                if isinstance(extracted_info[key], set):
+                    extracted_info[key] = list(extracted_info[key])
+            
+            # Clean up video file
+            try:
+                os.remove(video_path)
+            except:
+                pass
+            
+            # Store results in database
+            await self.store_analysis_results(video_url, all_text, extracted_info)
+            
+            return {
+                'success': True,
+                'extracted_text': all_text,
+                'extracted_info': extracted_info,
+                'frames_analyzed': len(frame_paths)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing video: {e}")
+            return {'error': str(e)}
+    
+    async def store_analysis_results(self, video_url: str, text: str, extracted_info: Dict):
+        """Store analysis results in database"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Extract video ID from URL if possible
+        video_id = self.extract_video_id(video_url)
+        
+        cursor.execute('''
+            INSERT INTO video_analysis 
+            (video_url, video_id, analysis_date, extracted_text, server_names, 
+             discord_invites, steam_profiles, player_names, timestamps, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            video_url,
+            video_id,
+            datetime.now(),
+            text,
+            json.dumps(extracted_info.get('server_names', [])),
+            json.dumps(extracted_info.get('discord_invites', [])),
+            json.dumps(extracted_info.get('steam_profiles', [])),
+            json.dumps(extracted_info.get('player_names', [])),
+            json.dumps(extracted_info.get('timestamps', [])),
+            json.dumps({'frames_analyzed': len(extracted_info.get('timestamps', []))})
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def extract_video_id(self, url: str) -> Optional[str]:
+        """Extract video ID from various video platform URLs"""
+        # YouTube
+        youtube_patterns = [
+            r'youtube\.com/watch\?v=([a-zA-Z0-9_-]+)',
+            r'youtu\.be/([a-zA-Z0-9_-]+)',
+            r'youtube\.com/embed/([a-zA-Z0-9_-]+)'
+        ]
+        
+        for pattern in youtube_patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        
+        return None
+
+
+class ProfilePictureMatcher:
+    def __init__(self, db_path="video_osint.db"):
+        self.db_path = db_path
+        self.session = None
+    
+    async def get_session(self):
+        if not self.session or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+    
+    async def close(self):
+        if self.session and not self.session.closed:
+            await self.session.close()
+    
+    async def download_image(self, image_url: str) -> Optional[str]:
+        """Download image to temporary file"""
+        try:
+            session = await self.get_session()
+            async with session.get(image_url) as response:
+                if response.status == 200:
+                    temp_dir = tempfile.mkdtemp()
+                    file_extension = image_url.split('.')[-1].split('?')[0]
+                    if file_extension not in ['jpg', 'jpeg', 'png', 'gif']:
+                        file_extension = 'jpg'
+                    
+                    image_path = os.path.join(temp_dir, f"image.{file_extension}")
+                    
+                    with open(image_path, 'wb') as f:
+                        async for chunk in response.content.iter_chunked(8192):
+                            f.write(chunk)
+                    
+                    return image_path
+                return None
+        except Exception as e:
+            logger.error(f"Error downloading image: {e}")
+            return None
+    
+    def calculate_image_hashes(self, image_path: str) -> Dict[str, str]:
+        """Calculate multiple types of image hashes"""
+        try:
+            image = Image.open(image_path)
+            
+            hashes = {
+                'ahash': str(ImageHash.average_hash(image)),
+                'dhash': str(ImageHash.dhash(image)),
+                'phash': str(ImageHash.phash(image)),
+                'whash': str(ImageHash.whash(image))
+            }
+            
+            return hashes
+        except Exception as e:
+            logger.error(f"Error calculating image hashes: {e}")
+            return {}
+    
+    async def add_profile_picture(self, image_url: str, platform: str, username: str) -> Optional[int]:
+        """Add profile picture to database with calculated hashes"""
+        image_path = await self.download_image(image_url)
+        if not image_path:
+            return None
+        
+        try:
+            hashes = self.calculate_image_hashes(image_path)
+            if not hashes:
+                return None
+            
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO profile_pictures 
+                (source_url, platform, username, image_hash, dhash, phash, file_path, upload_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                image_url,
+                platform,
+                username,
+                hashes.get('ahash', ''),
+                hashes.get('dhash', ''),
+                hashes.get('phash', ''),
+                image_path,
+                datetime.now()
+            ))
+            
+            profile_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            
+            return profile_id
+            
+        except Exception as e:
+            logger.error(f"Error adding profile picture: {e}")
+            return None
+        finally:
+            # Clean up temporary file
+            try:
+                os.remove(image_path)
+            except:
+                pass
+    
+    def find_similar_profiles(self, target_hashes: Dict[str, str], threshold: int = 10) -> List[Dict]:
+        """Find similar profile pictures based on hash comparison"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM profile_pictures')
+        profiles = cursor.fetchall()
+        
+        matches = []
+        
+        for profile in profiles:
+            profile_dict = {
+                'id': profile[0],
+                'source_url': profile[1],
+                'platform': profile[2],
+                'username': profile[3],
+                'image_hash': profile[4],
+                'dhash': profile[5],
+                'phash': profile[6],
+                'upload_date': profile[8]
+            }
+            
+            # Calculate hash differences
+            scores = {}
+            
+            if target_hashes.get('ahash') and profile_dict['image_hash']:
+                try:
+                    target_hash = ImageHash(hex_str=target_hashes['ahash'])
+                    profile_hash = ImageHash(hex_str=profile_dict['image_hash'])
+                    scores['ahash'] = target_hash - profile_hash
+                except:
+                    scores['ahash'] = 999
+            
+            if target_hashes.get('dhash') and profile_dict['dhash']:
+                try:
+                    target_hash = ImageHash(hex_str=target_hashes['dhash'])
+                    profile_hash = ImageHash(hex_str=profile_dict['dhash'])
+                    scores['dhash'] = target_hash - profile_hash
+                except:
+                    scores['dhash'] = 999
+            
+            if target_hashes.get('phash') and profile_dict['phash']:
+                try:
+                    target_hash = ImageHash(hex_str=target_hashes['phash'])
+                    profile_hash = ImageHash(hex_str=profile_dict['phash'])
+                    scores['phash'] = target_hash - profile_hash
+                except:
+                    scores['phash'] = 999
+            
+            # Use the best (lowest) score
+            if scores:
+                best_score = min(scores.values())
+                if best_score <= threshold:
+                    profile_dict['match_score'] = best_score
+                    profile_dict['match_type'] = min(scores, key=scores.get)
+                    matches.append(profile_dict)
+        
+        conn.close()
+        
+        # Sort by match score (lower is better)
+        matches.sort(key=lambda x: x['match_score'])
+        
+        return matches
+    
+    async def match_profile_picture(self, image_url: str, username_hint: str = None) -> List[Dict]:
+        """Find matching profile pictures across platforms"""
+        image_path = await self.download_image(image_url)
+        if not image_path:
+            return []
+        
+        try:
+            target_hashes = self.calculate_image_hashes(image_path)
+            if not target_hashes:
+                return []
+            
+            matches = self.find_similar_profiles(target_hashes)
+            
+            # Filter by username hint if provided
+            if username_hint:
+                filtered_matches = []
+                for match in matches:
+                    if username_hint.lower() in match['username'].lower():
+                        match['username_match'] = True
+                        filtered_matches.append(match)
+                
+                # If we found username matches, prioritize them
+                if filtered_matches:
+                    matches = filtered_matches + [m for m in matches if m not in filtered_matches]
+            
+            return matches[:10]  # Return top 10 matches
+            
+        except Exception as e:
+            logger.error(f"Error matching profile picture: {e}")
+            return []
+        finally:
+            try:
+                os.remove(image_path)
+            except:
+                pass
+
+
+# Discord Bot Integration
+import discord
+from discord.ext import commands
+
+class VideoOSINTCommands(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.video_osint = VideoOSINT()
+        self.profile_matcher = ProfilePictureMatcher()
+    
+    @commands.slash_command(name="analyze_video", description="Analyze video for player information")
+    async def analyze_video(self, ctx, video_url: str):
+        """Analyze a video for Rust-related information"""
+        await ctx.defer()
+        
+        # Validate URL
+        if not any(domain in video_url for domain in ['youtube.com', 'youtu.be', 'twitch.tv']):
+            await ctx.followup.send("❌ Please provide a valid YouTube or Twitch video URL")
+            return
+        
+        await ctx.followup.send("🔍 Analyzing video... This may take several minutes.")
+        
+        try:
+            results = await self.video_osint.analyze_video(video_url)
+            
+            if 'error' in results:
+                await ctx.followup.send(f"❌ Error analyzing video: {results['error']}")
+                return
+            
+            embed = discord.Embed(
+                title="🎥 Video Analysis Results",
+                color=discord.Color.blue(),
+                timestamp=datetime.now()
+            )
+            
+            extracted_info = results.get('extracted_info', {})
+            
+            # Server names found
+            server_names = extracted_info.get('server_names', [])
+            if server_names:
+                embed.add_field(
+                    name="🖥️ Servers Found",
+                    value="\n".join([f"• {server}" for server in server_names[:5]]),
+                    inline=False
+                )
+            
+            # Discord invites
+            discord_invites = extracted_info.get('discord_invites', [])
+            if discord_invites:
+                invite_links = [f"discord.gg/{invite}" for invite in discord_invites[:3]]
+                embed.add_field(
+                    name="💬 Discord Invites",
+                    value="\n".join([f"• {link}" for link in invite_links]),
+                    inline=False
+                )
+            
+            # Steam profiles
+            steam_profiles = extracted_info.get('steam_profiles', [])
+            if steam_profiles:
+                embed.add_field(
+                    name="🎮 Steam Profiles",
+                    value="\n".join([f"• {profile}" for profile in steam_profiles[:3]]),
+                    inline=False
+                )
+            
+            # Player names
+            player_names = extracted_info.get('player_names', [])
+            if player_names:
+                # Filter and limit player names
+                unique_names = list(set(player_names))[:10]
+                embed.add_field(
+                    name="👤 Potential Player Names",
+                    value=", ".join(unique_names),
+                    inline=False
+                )
+            
+            embed.add_field(
+                name="📊 Analysis Info",
+                value=f"Frames analyzed: {results.get('frames_analyzed', 0)}",
+                inline=True
+            )
+            
+            # If no useful information found
+            if not any([server_names, discord_invites, steam_profiles, player_names]):
+                embed.description = "ℹ️ No Rust-related information found in video frames"
+            
+            await ctx.followup.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Error in video analysis command: {e}")
+            await ctx.followup.send("❌ An error occurred during video analysis")
+    
+    @commands.slash_command(name="match_profile", description="Find matching profile pictures across platforms")
+    async def match_profile(self, ctx, image_url: str, username_hint: str = None):
+        """Match profile pictures to find accounts across platforms"""
+        await ctx.defer()
+        
+        await ctx.followup.send("🔍 Searching for matching profile pictures...")
+        
+        try:
+            matches = await self.profile_matcher.match_profile_picture(image_url, username_hint)
+            
+            if not matches:
+                await ctx.followup.send("❌ No matching profile pictures found")
+                return
+            
+            embed = discord.Embed(
+                title="🖼️ Profile Picture Matches",
+                color=discord.Color.green(),
+                timestamp=datetime.now()
+            )
+            
+            for i, match in enumerate(matches[:5], 1):
+                platform_emoji = {
+                    'steam': '🎮',
+                    'discord': '💬',
+                    'youtube': '🎥',
+                    'twitch': '📺'
+                }.get(match['platform'].lower(), '🔗')
+                
+                match_quality = "🟢 Excellent" if match['match_score'] <= 3 else \
+                               "🟡 Good" if match['match_score'] <= 7 else "🟠 Fair"
+                
+                embed.add_field(
+                    name=f"{i}. {platform_emoji} {match['platform'].title()}",
+                    value=f"**Username:** {match['username']}\n"
+                          f"**Match Quality:** {match_quality} ({match['match_score']})\n"
+                          f"**Hash Type:** {match['match_type']}",
+                    inline=True
+                )
+            
+            if len(matches) > 5:
+                embed.set_footer(text=f"Showing top 5 of {len(matches)} matches")
+            
+            await ctx.followup.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Error in profile matching command: {e}")
+            await ctx.followup.send("❌ An error occurred during profile matching")
+    
+    @commands.slash_command(name="add_profile", description="Add a profile picture to the matching database")
+    async def add_profile(self, ctx, image_url: str, platform: str, username: str):
+        """Add a profile picture to the database for future matching"""
+        await ctx.defer()
+        
+        try:
+            profile_id = await self.profile_matcher.add_profile_picture(image_url, platform, username)
+            
+            if profile_id:
+                embed = discord.Embed(
+                    title="✅ Profile Added",
+                    description=f"Added {username} from {platform} to profile database",
+                    color=discord.Color.green()
+                )
+                embed.add_field(name="Profile ID", value=str(profile_id), inline=True)
+                embed.add_field(name="Platform", value=platform.title(), inline=True)
+                embed.add_field(name="Username", value=username, inline=True)
+                
+                await ctx.followup.send(embed=embed)
+            else:
+                await ctx.followup.send("❌ Failed to add profile picture to database")
+                
+        except Exception as e:
+            logger.error(f"Error adding profile: {e}")
+            await ctx.followup.send("❌ An error occurred while adding the profile")
+    
+    @commands.slash_command(name="search_extracted", description="Search previously extracted video data")
+    async def search_extracted(self, ctx, search_term: str, search_type: str = "all"):
+        """Search through previously analyzed video data"""
+        await ctx.defer()
+        
+        conn = sqlite3.connect(self.video_osint.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            if search_type == "servers":
+                cursor.execute('''
+                    SELECT video_url, server_names, analysis_date 
+                    FROM video_analysis 
+                    WHERE server_names LIKE ? 
+                    ORDER BY analysis_date DESC LIMIT 10
+                ''', (f'%{search_term}%',))
+            elif search_type == "players":
+                cursor.execute('''
+                    SELECT video_url, player_names, analysis_date 
+                    FROM video_analysis 
+                    WHERE player_names LIKE ? 
+                    ORDER BY analysis_date DESC LIMIT 10
+                ''', (f'%{search_term}%',))
+            elif search_type == "discord":
+                cursor.execute('''
+                    SELECT video_url, discord_invites, analysis_date 
+                    FROM video_analysis 
+                    WHERE discord_invites LIKE ? 
+                    ORDER BY analysis_date DESC LIMIT 10
+                ''', (f'%{search_term}%',))
+            else:  # all
+                cursor.execute('''
+                    SELECT video_url, extracted_text, analysis_date 
+                    FROM video_analysis 
+                    WHERE extracted_text LIKE ? 
+                    ORDER BY analysis_date DESC LIMIT 10
+                ''', (f'%{search_term}%',))
+            
+            results = cursor.fetchall()
+            
+            if not results:
+                await ctx.followup.send(f"❌ No results found for '{search_term}'")
+                return
+            
+            embed = discord.Embed(
+                title=f"🔍 Search Results for '{search_term}'",
+                color=discord.Color.blue(),
+                timestamp=datetime.now()
+            )
+            
+            for i, result in enumerate(results[:5], 1):
+                video_url = result[0]
+                analysis_date = result[2]
+                
+                # Create a short URL for display
+                short_url = video_url[:50] + "..." if len(video_url) > 50 else video_url
+                
+                embed.add_field(
+                    name=f"{i}. Video Analysis",
+                    value=f"**URL:** {short_url}\n**Date:** {analysis_date[:10]}",
+                    inline=False
+                )
+            
+            if len(results) > 5:
+                embed.set_footer(text=f"Showing 5 of {len(results)} results")
+            
+            await ctx.followup.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Error searching extracted data: {e}")
+            await ctx.followup.send("❌ An error occurred during search")
+        finally:
+            conn.close()
+    
+    def cog_unload(self):
+        """Cleanup when cog is unloaded"""
+        asyncio.create_task(self.video_osint.close())
+        asyncio.create_task(self.profile_matcher.close())
+
+
+# Utility functions for integration
+class OSINTUtils:
+    @staticmethod
+    def extract_youtube_metadata(video_url: str) -> Dict:
+        """Extract metadata from YouTube URL"""
+        parsed_url = urlparse(video_url)
+        
+        if 'youtube.com' in parsed_url.netloc:
+            query_params = parse_qs(parsed_url.query)
+            video_id = query_params.get('v', [None])[0]
+        elif 'youtu.be' in parsed_url.netloc:
+            video_id = parsed_url.path[1:]
+        else:
+            video_id = None
+        
+        return {
+            'platform': 'youtube',
+            'video_id': video_id,
+            'url': video_url
+        }
+    
+    @staticmethod
+    def format_discord_invite(invite_code: str) -> str:
+        """Format Discord invite code into full URL"""
+        if invite_code.startswith('http'):
+            return invite_code
+        return f"https://discord.gg/{invite_code}"
+    
+    @staticmethod
+    def validate_steam_id(steam_input: str) -> Optional[str]:
+        """Validate and extract Steam ID from various formats"""
+        # Steam profile URL
+        match = re.search(r'steamcommunity\.com/profiles/(\d{17})', steam_input)
+        if match:
+            return match.group(1)
+        
+        # Direct Steam ID
+        if steam_input.isdigit() and len(steam_input) == 17:
+            return steam_input
+        
+        return None
+
+
+# Example usage in main bot
+"""
+# Add to main bot file:
+
+from video_osint_module import VideoOSINTCommands
+
+@bot.event
+async def on_ready():
+    await bot.add_cog(VideoOSINTCommands(bot))
+    print("Video OSINT commands loaded")
+
+# Usage:
+# /analyze_video https://youtube.com/watch?v=example
+# /match_profile https://example.com/profile.jpg username_hint
+# /add_profile https://example.com/avatar.jpg steam PlayerName
+# /search_extracted "Rustafied" servers
+"""
+
+import asyncio
+import aiohttp
+import sqlite3
+import json
+import re
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+import logging
+from pathlib import Path
+import discord
+from discord.ext import commands, tasks
+
+logger = logging.getLogger(__name__)
+
+class BanChecker:
+    def __init__(self, self_bot_token: str, atlas_channel_id: int, atlas_bot_user_id: int, db_path="bans.db"):
+        self.self_bot_token = self_bot_token
+        self.atlas_channel_id = atlas_channel_id
+        self.atlas_bot_user_id = atlas_bot_user_id
+        self.db_path = db_path
+        self.session = None
+        self.init_database()
+        
+        # Rate limiting
+        self.last_atlas_call = 0.0
+        self.atlas_cooldown = 10.0  # 10 seconds between calls
+    
+    def init_database(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Ban records table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS ban_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                steamid TEXT,
+                player_name TEXT,
+                ban_type TEXT,
+                ban_reason TEXT,
+                ban_date TIMESTAMP,
+                server_name TEXT,
+                server_id TEXT,
+                last_seen TIMESTAMP,
+                ban_active BOOLEAN,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # EAC ban tracking
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS eac_bans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                steamid TEXT UNIQUE,
+                player_name TEXT,
+                ban_date TIMESTAMP,
+                days_since_last_ban INTEGER,
+                last_checked TIMESTAMP,
+                verified BOOLEAN DEFAULT FALSE
+            )
+        ''')
+        
+        # Server tracking for ban context
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS server_activity (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                steamid TEXT,
+                server_name TEXT,
+                server_id TEXT,
+                last_seen TIMESTAMP,
+                play_time_hours REAL,
+                last_updated TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    async def get_session(self):
+        if not self.session or self.session.closed:
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Content-Type": "application/json",
+                "Origin": "https://discord.com",
+                "Referer": "https://discord.com/channels/@me",
+                "Authorization": self.self_bot_token,
+            }
+            self.session = aiohttp.ClientSession(headers=headers)
+        return self.session
+    
+    async def close(self):
+        if self.session and not self.session.closed:
+            await self.session.close()
+    
+    async def send_atlas_message(self, steamid: str) -> Optional[Dict]:
+        """Send message to Atlas bot channel and wait for response"""
+        current_time = asyncio.get_event_loop().time()
+        
+        # Rate limiting
+        if (current_time - self.last_atlas_call) < self.atlas_cooldown:
+            await asyncio.sleep(self.atlas_cooldown - (current_time - self.last_atlas_call))
+        
+        self.last_atlas_call = asyncio.get_event_loop().time()
+        
+        session = await self.get_session()
+        
+        # Send message
+        url = f"https://discord.com/api/v9/channels/{self.atlas_channel_id}/messages"
+        payload = {
+            "content": f",player {steamid}",
+            "nonce": str(int(asyncio.get_event_loop().time() * 1000)),
+            "tts": False
+        }
+        
+        try:
+            async with session.post(url, json=payload) as response:
+                if response.status == 200:
+                    message_data = await response.json()
+                    message_id = message_data.get("id")
+                    
+                    # Wait for Atlas bot response
+                    return await self.wait_for_atlas_response(message_id)
+                else:
+                    logger.error(f"Failed to send Atlas message: {response.status}")
+                    return None
+        except Exception as e:
+            logger.error(f"Error sending Atlas message: {e}")
+            return None
+    
+    async def wait_for_atlas_response(self, original_message_id: str, timeout: int = 60) -> Optional[Dict]:
+        """Wait for Atlas bot to respond to our message"""
+        session = await self.get_session()
+        url = f"https://discord.com/api/v9/channels/{self.atlas_channel_id}/messages"
+        
+        start_time = asyncio.get_event_loop().time()
+        
+        while (asyncio.get_event_loop().time() - start_time) < timeout:
+            try:
+                params = {"limit": 10, "after": original_message_id}
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        messages = await response.json()
+                        
+                        for message in messages:
+                            author = message.get("author", {})
+                            if author.get("id") == str(self.atlas_bot_user_id):
+                                return message
+                
+                await asyncio.sleep(2)  # Check every 2 seconds
+            except Exception as e:
+                logger.error(f"Error waiting for Atlas response: {e}")
+                break
+        
+        return None
+    
+    def extract_battlemetrics_url(self, message_content: str) -> Optional[str]:
+        """Extract BattleMetrics URL from Atlas response"""
+        patterns = [
+            r'https://www\.battlemetrics\.com/players/(\d+)',
+            r'https://www\.battlemetrics\.com/rcon/players/(\d+)',
+            r'battlemetrics\.com/players/(\d+)',
+            r'BM:\s*(\d+)',
+            r'BattleMetrics:\s*(\d+)'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, message_content, re.IGNORECASE)
+            if match:
+                bm_id = match.group(1)
+                return f"https://www.battlemetrics.com/players/{bm_id}"
+        
+        return None
+    
+    async def check_eac_ban_status(self, steamid: str) -> Dict:
+        """Check EAC ban status using Steam API or web scraping"""
+        # This would integrate with Steam API or web scraping
+        # For now, return placeholder data
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Check if we have cached EAC ban data
+        cursor.execute('SELECT * FROM eac_bans WHERE steamid = ?', (steamid,))
+        cached_ban = cursor.fetchone()
+        
+        if cached_ban:
+            return {
+                'steamid': cached_ban[1],
+                'player_name': cached_ban[2],
+                'ban_date': cached_ban[3],
+                'days_since_ban': cached_ban[4],
+                'is_banned': True,
+                'verified': cached_ban[6],
+                'source': 'cached'
+            }
+        
+        # TODO: Implement actual EAC ban checking
+        # This could involve:
+        # 1. Steam API calls
+        # 2. Web scraping EAC ban lists
+        # 3. Third-party ban checking APIs
+        
+        conn.close()
+        
+        return {
+            'steamid': steamid,
+            'is_banned': False,
+            'source': 'not_implemented'
+        }
+    
+    async def comprehensive_ban_check(self, steamid: str, bm_id: str = None) -> Dict:
+        """Perform comprehensive ban checking"""
+        results = {
+            'steamid': steamid,
+            'bm_id': bm_id,
+            'atlas_response': None,
+            'bm_url': None,
+            'eac_ban': None,
+            'server_bans': [],
+            'last_activity': None,
+            'risk_assessment': 'Unknown'
+        }
+        
+        try:
+            # 1. Query Atlas bot if no BM ID provided
+            if not bm_id:
+                atlas_response = await self.send_atlas_message(steamid)
+                if atlas_response:
+                    results['atlas_response'] = atlas_response.get('content', '')
+                    results['bm_url'] = self.extract_battlemetrics_url(results['atlas_response'])
+                    
+                    # Extract BM ID from URL
+                    if results['bm_url']:
+                        bm_match = re.search(r'/players/(\d+)', results['bm_url'])
+                        if bm_match:
+                            bm_id = bm_match.group(1)
+                            results['bm_id'] = bm_id
+            
+            # 2. Check EAC ban status
+            eac_results = await self.check_eac_ban_status(steamid)
+            results['eac_ban'] = eac_results
+            
+            # 3. Check BattleMetrics for server bans (if BM ID available)
+            if bm_id:
+                bm_bans = await self.check_battlemetrics_bans(bm_id)
+                results['server_bans'] = bm_bans
+            
+            # 4. Risk assessment
+            risk_factors = []
+            
+            if results['eac_ban'] and results['eac_ban'].get('is_banned'):
+                risk_factors.append("EAC banned")
+            
+            if results['server_bans']:
+                recent_bans = [ban for ban in results['server_bans'] 
+                              if self.is_recent_ban(ban.get('ban_date'))]
+                if recent_bans:
+                    risk_factors.append(f"{len(recent_bans)} recent server ban(s)")
+            
+            if risk_factors:
+                results['risk_assessment'] = "High Risk - " + ", ".join(risk_factors)
+            else:
+                results['risk_assessment'] = "No bans found"
+            
+            # 5. Store results
+            await self.store_ban_check_results(results)
+            
+        except Exception as e:
+            logger.error(f"Error in comprehensive ban check: {e}")
+            results['error'] = str(e)
+        
+        return results
+    
+    async def check_battlemetrics_bans(self, bm_id: str) -> List[Dict]:
+        """Check BattleMetrics for server bans"""
+        session = await self.get_session()
+        
+        # Remove authorization header for BattleMetrics API
+        headers = dict(session.headers)
+        headers.pop('Authorization', None)
+        
+        async with aiohttp.ClientSession(headers=headers) as bm_session:
+            try:
+                url = f"https://api.battlemetrics.com/players/{bm_id}/relationships/notes"
+                async with bm_session.get(url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        
+                        bans = []
+                        notes = data.get('data', [])
+                        
+                        for note in notes:
+                            attributes = note.get('attributes', {})
+                            note_content = attributes.get('note', '').lower()
+                            
+                            # Look for ban indicators
+                            ban_keywords = ['ban', 'banned', 'cheating', 'hacking', 'eac']
+                            if any(keyword in note_content for keyword in ban_keywords):
+                                bans.append({
+                                    'note_id': note.get('id'),
+                                    'note': attributes.get('note'),
+                                    'created_at': attributes.get('createdAt'),
+                                    'private': attributes.get('private', False),
+                                    'ban_type': self.classify_ban_type(note_content)
+                                })
+                        
+                        return bans
+                    
+            except Exception as e:
+                logger.error(f"Error checking BattleMetrics bans: {e}")
+        
+        return []
+    
+    def classify_ban_type(self, note_content: str) -> str:
+        """Classify ban type based on note content"""
+        note_lower = note_content.lower()
+        
+        if 'eac' in note_lower:
+            return 'EAC'
+        elif 'vac' in note_lower:
+            return 'VAC'
+        elif any(word in note_lower for word in ['hack', 'cheat', 'esp', 'aimbot']):
+            return 'Cheating'
+        elif 'toxic' in note_lower or 'harassment' in note_lower:
+            return 'Toxicity'
+        elif 'grief' in note_lower:
+            return 'Griefing'
+        else:
+            return 'Other'
+    
+    def is_recent_ban(self, ban_date_str: str, days_threshold: int = 30) -> bool:
+        """Check if ban is recent (within threshold days)"""
+        try:
+            ban_date = datetime.fromisoformat(ban_date_str.replace('Z', '+00:00'))
+            threshold_date = datetime.now() - timedelta(days=days_threshold)
+            return ban_date > threshold_date
+        except:
+            return False
+    
+    async def store_ban_check_results(self, results: Dict):
+        """Store ban check results in database"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            steamid = results.get('steamid')
+            
+            # Store EAC ban if found
+            eac_ban = results.get('eac_ban')
+            if eac_ban and eac_ban.get('is_banned'):
+                cursor.execute('''
+                    INSERT OR REPLACE INTO eac_bans 
+                    (steamid, player_name, ban_date, days_since_last_ban, last_checked, verified)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (
+                    steamid,
+                    eac_ban.get('player_name', 'Unknown'),
+                    eac_ban.get('ban_date'),
+                    eac_ban.get('days_since_ban', 0),
+                    datetime.now(),
+                    eac_ban.get('verified', False)
+                ))
+            
+            # Store server bans
+            for ban in results.get('server_bans', []):
+                cursor.execute('''
+                    INSERT OR REPLACE INTO ban_records
+                    (steamid, player_name, ban_type, ban_reason, ban_date, 
+                     server_name, ban_active, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    steamid,
+                    'Unknown',  # Would need to get from BM API
+                    ban.get('ban_type', 'Unknown'),
+                    ban.get('note', ''),
+                    ban.get('created_at'),
+                    'Unknown',  # Server name would need BM API lookup
+                    True,  # Assume active
+                    datetime.now()
+                ))
+            
+            conn.commit()
+            
+        except Exception as e:
+            logger.error(f"Error storing ban check results: {e}")
+        finally:
+            conn.close()
+
+
+class DiscordTracker:
+    def __init__(self, db_path="discord_tracking.db"):
+        self.db_path = db_path
+        self.session = None
+        self.init_database()
+    
+    def init_database(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Discord user tracking
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS discord_users (
+                user_id TEXT PRIMARY KEY,
+                username TEXT,
+                discriminator TEXT,
+                display_name TEXT,
+                avatar_hash TEXT,
+                account_created TIMESTAMP,
+                first_seen TIMESTAMP,
+                last_seen TIMESTAMP,
+                bio TEXT,
+                status TEXT,
+                activity TEXT,
+                verified BOOLEAN,
+                bot BOOLEAN,
+                system BOOLEAN
+            )
+        ''')
+        
+        # Username history
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS discord_username_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                old_username TEXT,
+                new_username TEXT,
+                old_discriminator TEXT,
+                new_discriminator TEXT,
+                change_date TIMESTAMP
+            )
+        ''')
+        
+        # Guild memberships
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS discord_memberships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                guild_id TEXT,
+                guild_name TEXT,
+                joined_at TIMESTAMP,
+                left_at TIMESTAMP,
+                roles TEXT,
+                nickname TEXT,
+                permissions INTEGER,
+                still_member BOOLEAN DEFAULT TRUE
+            )
+        ''')
+        
+        # Message activity tracking
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS discord_activity (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
+                guild_id TEXT,
+                channel_id TEXT,
+                message_count INTEGER,
+                last_message TIMESTAMP,
+                activity_date DATE,
+                voice_minutes INTEGER DEFAULT 0
+            )
+        ''')
+        
+        # Alt account detection
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS alt_account_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                main_user_id TEXT,
+                alt_user_id TEXT,
+                link_confidence REAL,
+                link_reasons TEXT,
+                detected_date TIMESTAMP,
+                verified BOOLEAN DEFAULT FALSE
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    async def get_session(self):
+        if not self.session or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+    
+    async def close(self):
+        if self.session and not self.session.closed:
+            await self.session.close()
+    
+    async def lookup_discord_user(self, user_identifier: str) -> Optional[Dict]:
+        """Lookup Discord user by ID, username, or other identifier"""
+        # This would integrate with discord.id, discord-tracker.com APIs
+        # For now, return cached data or placeholder
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Check if it's a user ID (numeric)
+        if user_identifier.isdigit():
+            cursor.execute('SELECT * FROM discord_users WHERE user_id = ?', (user_identifier,))
+        else:
+            # Search by username
+            cursor.execute('''
+                SELECT * FROM discord_users 
+                WHERE username LIKE ? OR display_name LIKE ?
+            ''', (f'%{user_identifier}%', f'%{user_identifier}%'))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                'user_id': result[0],
+                'username': result[1],
+                'discriminator': result[2],
+                'display_name': result[3],
+                'avatar_hash': result[4],
+                'account_created': result[5],
+                'first_seen': result[6],
+                'last_seen': result[7],
+                'bio': result[8],
+                'verified': result[11],
+                'source': 'cached'
+            }
+        
+        return None
+    
+    def track_user_update(self, old_user_data: Dict, new_user_data: Dict):
+        """Track changes in user data"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        user_id = new_user_data.get('id')
+        
+        # Check for username changes
+        old_username = old_user_data.get('username')
+        new_username = new_user_data.get('username')
+        old_discriminator = old_user_data.get('discriminator')
+        new_discriminator = new_user_data.get('discriminator')
+        
+        if (old_username != new_username or old_discriminator != new_discriminator):
+            cursor.execute('''
+                INSERT INTO discord_username_history
+                (user_id, old_username, new_username, old_discriminator, new_discriminator, change_date)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                user_id, old_username, new_username, 
+                old_discriminator, new_discriminator, datetime.now()
+            ))
+        
+        # Update main user record
+        cursor.execute('''
+            INSERT OR REPLACE INTO discord_users
+            (user_id, username, discriminator, display_name, avatar_hash, 
+             account_created, last_seen, bio, verified, bot, system)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            user_id,
+            new_user_data.get('username'),
+            new_user_data.get('discriminator'),
+            new_user_data.get('global_name'),
+            new_user_data.get('avatar'),
+            self.discord_timestamp_to_datetime(user_id),
+            datetime.now(),
+            new_user_data.get('bio', ''),
+            new_user_data.get('verified', False),
+            new_user_data.get('bot', False),
+            new_user_data.get('system', False)
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def discord_timestamp_to_datetime(self, user_id: str) -> datetime:
+        """Convert Discord user ID to account creation timestamp"""
+        try:
+            discord_epoch = 1420070400000  # Discord epoch in milliseconds
+            timestamp = ((int(user_id) >> 22) + discord_epoch) / 1000
+            return datetime.fromtimestamp(timestamp)
+        except:
+            return datetime.now()
+    
+    def detect_alt_accounts(self, user_id: str) -> List[Dict]:
+        """Detect potential alt accounts based on behavior patterns"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Get user data
+        cursor.execute('SELECT * FROM discord_users WHERE user_id = ?', (user_id,))
+        user_data = cursor.fetchone()
+        
+        if not user_data:
+            conn.close()
+            return []
+        
+        account_created = user_data[5]
+        
+        potential_alts = []
+        
+        # Look for accounts created around the same time
+        cursor.execute('''
+            SELECT user_id, username, account_created 
+            FROM discord_users 
+            WHERE user_id != ? 
+            AND abs(julianday(account_created) - julianday(?)) < 7  -- Within 7 days
+        ''', (user_id, account_created))
+        
+        similar_timing = cursor.fetchall()
+        
+        for alt_user in similar_timing:
+            confidence = 0.3  # Base confidence for similar creation time
+            reasons = ["Similar account creation time"]
+            
+            # Check for similar usernames
+            original_username = user_data[1].lower()
+            alt_username = alt_user[1].lower()
+            
+            # Simple similarity check
+            if self.username_similarity(original_username, alt_username) > 0.7:
+                confidence += 0.4
+                reasons.append("Similar username pattern")
+            
+            # Check for guild overlap
+            cursor.execute('''
+                SELECT COUNT(DISTINCT g1.guild_id) 
+                FROM discord_memberships g1 
+                JOIN discord_memberships g2 ON g1.guild_id = g2.guild_id
+                WHERE g1.user_id = ? AND g2.user_id = ? 
+                AND g1.still_member = TRUE AND g2.still_member = TRUE
+            ''', (user_id, alt_user[0]))
+            
+            shared_guilds = cursor.fetchone()[0]
+            if shared_guilds > 2:
+                confidence += 0.3
+                reasons.append(f"Member of {shared_guilds} shared servers")
+            
+            if confidence > 0.5:
+                potential_alts.append({
+                    'user_id': alt_user[0],
+                    'username': alt_user[1],
+                    'confidence': confidence,
+                    'reasons': reasons
+                })
+        
+        conn.close()
+        return potential_alts
+    
+    def username_similarity(self, username1: str, username2: str) -> float:
+        """Calculate similarity between two usernames"""
+        # Simple Levenshtein distance implementation
+        if len(username1) < len(username2):
+            return self.username_similarity(username2, username1)
+        
+        if len(username2) == 0:
+            return 0.0
+        
+        previous_row = list(range(len(username2) + 1))
+        for i, c1 in enumerate(username1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(username2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+        
+        distance = previous_row[-1]
+        max_len = max(len(username1), len(username2))
+        return 1 - (distance / max_len)
+
+
+# Discord Bot Integration Commands
+class BanCheckerCommands(commands.Cog):
+    def __init__(self, bot, self_bot_token: str, atlas_channel_id: int, atlas_bot_user_id: int):
+        self.bot = bot
+        self.ban_checker = BanChecker(self_bot_token, atlas_channel_id, atlas_bot_user_id)
+        self.discord_tracker = DiscordTracker()
+    
+    @commands.slash_command(name="ban_check", description="Comprehensive ban checking for a player")
+    async def ban_check(self, ctx, steam_input: str, bm_input: str = None):
+        """Check for bans across multiple platforms"""
+        await ctx.defer()
+        
+        # Extract Steam ID
+        steamid_match = re.search(r'(\d{17})', steam_input)
+        steamid = steamid_match.group(1) if steamid_match else steam_input
+        
+        # Extract BM ID if provided
+        bm_id = None
+        if bm_input:
+            bm_match = re.search(r'(\d+)', bm_input)
+            bm_id = bm_match.group(1) if bm_match else bm_input
+        
+        await ctx.followup.send("🔍 Checking for bans... This may take a moment.")
+        
+        try:
+            results = await self.ban_checker.comprehensive_ban_check(steamid, bm_id)
+            
+            embed = discord.Embed(
+                title="🚫 Ban Check Results",
+                color=self.get_risk_color(results['risk_assessment']),
+                timestamp=datetime.now()
+            )
+            
+            # Basic info
+            embed.add_field(
+                name="👤 Player Info",
+                value=f"**Steam ID:** {steamid}\n**BM ID:** {results.get('bm_id', 'Not found')}",
+                inline=False
+            )
+            
+            # Risk assessment
+            embed.add_field(
+                name="⚠️ Risk Assessment",
+                value=results['risk_assessment'],
+                inline=False
+            )
+            
+            # EAC Ban Status
+            eac_ban = results.get('eac_ban')
+            if eac_ban and eac_ban.get('is_banned'):
+                embed.add_field(
+                    name="🔴 EAC Ban Detected",
+                    value=f"**Banned:** Yes\n**Ban Date:** {eac_ban.get('ban_date', 'Unknown')}\n**Days Since Ban:** {eac_ban.get('days_since_ban', 'Unknown')}",
+                    inline=True
+                )
+            else:
+                embed.add_field(
+                    name="🟢 EAC Status",
+                    value="No EAC ban detected",
+                    inline=True
+                )
+            
+            # Server bans
+            server_bans = results.get('server_bans', [])
+            if server_bans:
+                ban_text = ""
+                for i, ban in enumerate(server_bans[:3], 1):
+                    ban_type = ban.get('ban_type', 'Unknown')
+                    ban_date = ban.get('created_at', 'Unknown')[:10] if ban.get('created_at') else 'Unknown'
+                    ban_text += f"{i}. **{ban_type}** - {ban_date}\n"
+                
+                embed.add_field(
+                    name=f"🚨 Server Bans ({len(server_bans)} total)",
+                    value=ban_text if ban_text else "No server bans found",
+                    inline=False
+                )
+            
+            # BattleMetrics link
+            if results.get('bm_url'):
+                embed.add_field(
+                    name="🔗 BattleMetrics Profile",
+                    value=f"[View Profile]({results['bm_url']})",
+                    inline=True
+                )
+            
+            await ctx.followup.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Error in ban check command: {e}")
+            await ctx.followup.send("❌ An error occurred during ban checking")
+    
+    @commands.slash_command(name="discord_lookup", description="Look up Discord user information")
+    async def discord_lookup(self, ctx, user_input: str):
+        """Look up Discord user by ID or username"""
+        await ctx.defer()
+        
+        try:
+            user_data = await self.discord_tracker.lookup_discord_user(user_input)
+            
+            if not user_data:
+                await ctx.followup.send("❌ User not found in database")
+                return
+            
+            embed = discord.Embed(
+                title="💬 Discord User Lookup",
+                color=discord.Color.blue(),
+                timestamp=datetime.now()
+            )
+            
+            embed.add_field(
+                name="👤 User Info",
+                value=f"**Username:** {user_data['username']}#{user_data['discriminator']}\n**Display Name:** {user_data.get('display_name', 'None')}\n**User ID:** {user_data['user_id']}",
+                inline=False
+            )
+            
+            if user_data.get('account_created'):
+                embed.add_field(
+                    name="📅 Account Created",
+                    value=user_data['account_created'][:10],
+                    inline=True
+                )
+            
+            if user_data.get('bio'):
+                embed.add_field(
+                    name="📝 Bio",
+                    value=user_data['bio'][:100] + "..." if len(user_data['bio']) > 100 else user_data['bio'],
+                    inline=False
+                )
+            
+            # Check for potential alts
+            alt_accounts = self.discord_tracker.detect_alt_accounts(user_data['user_id'])
+            if alt_accounts:
+                alt_text = ""
+                for alt in alt_accounts[:3]:
+                    confidence_pct = int(alt['confidence'] * 100)
+                    alt_text += f"• {alt['username']} ({confidence_pct}% confidence)\n"
+                
+                embed.add_field(
+                    name="🔍 Potential Alt Accounts",
+                    value=alt_text,
+                    inline=False
+                )
+            
+            await ctx.followup.send(embed=embed)
+            
+        except Exception as e:
+            logger.error(f"Error in Discord lookup: {e}")
+            await ctx.followup.send("❌ An error occurred during Discord lookup")
+    
+    def get_risk_color(self, risk_assessment: str) -> discord.Color:
+        """Get color based on risk level"""
+        if "High Risk" in risk_assessment:
+            return discord.Color.red()
+        elif "Medium Risk" in risk_assessment:
+            return discord.Color.orange()
+        elif "No bans" in risk_assessment:
+            return discord.Color.green()
+        else:
+            return discord.Color.blue()
+    
+    def cog_unload(self):
+        """Cleanup when cog is unloaded"""
+        asyncio.create_task(self.ban_checker.close())
+        asyncio.create_task(self.discord_tracker.close())
+
+
+# Example integration with main bot
+"""
+# Add to main bot file:
+
+@bot.event
+async def on_ready():
+    await bot.add_cog(BanCheckerCommands(
+        bot, 
+        Config.SELF_BOT_TOKEN,
+        Config.ATLAS_CHANNEL_ID,
+        Config.ATLAS_BOT_USER_ID
+    ))
+    print("Ban checker commands loaded")
+
+# Usage examples:
+# /ban_check 76561198123456789
+# /ban_check 76561198123456789 12345678
+# /discord_lookup 123456789012345678
+# /discord_lookup username#1234
+"""
+
+# Automated tracking task
+@tasks.loop(hours=6)
+async def update_tracked_players():
+    """Periodically update tracked players"""
+    # This would run in the background to update player data
+    pass
+
+# Event handlers for Discord tracking
+class DiscordEventHandler(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.discord_tracker = DiscordTracker()
+    
+    @commands.Cog.listener()
+    async def on_user_update(self, before, after):
+        """Track user updates"""
+        if before.name != after.name or before.discriminator != after.discriminator:
+            old_data = {
+                'id': str(before.id),
+                'username': before.name,
+                'discriminator': before.discriminator,
+                'global_name': before.global_name
+            }
+            new_data = {
+                'id': str(after.id),
+                'username': after.name,
+                'discriminator': after.discriminator,
+                'global_name': after.global_name,
+                'avatar': after.avatar.key if after.avatar else None
+            }
+            
+            self.discord_tracker.track_user_update(old_data, new_data)
+    
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        """Track when members join servers"""
+        conn = sqlite3.connect(self.discord_tracker.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO discord_memberships
+            (user_id, guild_id, guild_name, joined_at, nickname, still_member)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            str(member.id),
+            str(member.guild.id),
+            member.guild.name,
+            datetime.now(),
+            member.nick,
+            True
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        """Track when members leave servers"""
+        conn = sqlite3.connect(self.discord_tracker.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE discord_memberships 
+            SET left_at = ?, still_member = FALSE
+            WHERE user_id = ? AND guild_id = ?
+        ''', (datetime.now(), str(member.id), str(member.guild.id)))
+        
+        conn.commit()
+        conn.close()
+
+import asyncio
+import logging
+import os
+from pathlib import Path
+import discord
+from discord.ext import commands, tasks
+from datetime import datetime
+import json
+
+# Import our custom modules
+from player_checker_bot import PlayerCheckerBot, SteamChecker, BattleMetricsChecker, DatabaseManager
+from hashtag_tracker import YouTubeHashtagTracker, HashtagCommands
+from video_osint_module import VideoOSINTCommands, VideoOSINT, ProfilePictureMatcher
+from ban_checker_discord import BanCheckerCommands, DiscordEventHandler, BanChecker, DiscordTracker
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Configuration class - replace with your actual values
+class Config:
+    # Discord Bot Configuration
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+    SELF_BOT_TOKEN = os.getenv("SELF_BOT_TOKEN", "YOUR_SELF_BOT_TOKEN_HERE")
+    
+    # API Keys
+    STEAM_API_KEY = os.getenv("STEAM_API_KEY", "YOUR_STEAM_API_KEY_HERE")
+    YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "YOUR_YOUTUBE_API_KEY_HERE")
+    BATTLEMETRICS_TOKEN = os.getenv("BATTLEMETRICS_TOKEN", "")  # Optional
+    
+    # Atlas Bot Configuration
+    ATLAS_CHANNEL_ID = int(os.getenv("ATLAS_CHANNEL_ID", "123456789"))
+    ATLAS_BOT_USER_ID = int(os.getenv("ATLAS_BOT_USER_ID", "123456789"))
+    ATLAS_COOLDOWN_SECONDS = 10
+    
+    # Server IDs for tracking
+    ATLAS_SERVER_ID = int(os.getenv("ATLAS_SERVER_ID", "123456789"))
+    VITAL_SERVER_ID = int(os.getenv("VITAL_SERVER_ID", "123456789"))
+    
+    # Database Configuration
+    DATABASE_PATH = "data/"
+    
+    # Ignore user ID (your Discord ID)
+    IGNORE_USER_ID = int(os.getenv("IGNORE_USER_ID", "123456789"))
+    
+    @classmethod
+    def validate_config(cls):
+        """Validate that required configuration is set"""
+        required_fields = ['BOT_TOKEN', 'STEAM_API_KEY', 'ATLAS_CHANNEL_ID', 'ATLAS_BOT_USER_ID']
+        missing = []
+        
+        for field in required_fields:
+            value = getattr(cls, field)
+            if not value or str(value) in ["YOUR_BOT_TOKEN_HERE", "YOUR_STEAM_API_KEY_HERE", "123456789"]:
+                missing.append(field)
+        
+        if missing:
+            raise ValueError(f"Missing required configuration: {', '.join(missing)}")
+        
+        return True
+
+
+class ComprehensivePlayerBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.members = True  # Required for Discord tracking
+        intents.guilds = True
+        intents.presences = True  # Optional for presence tracking
+        
+        super().__init__(
+            command_prefix='/',
+            intents=intents,
+            help_command=None,
+            description="Comprehensive Rust Player Checking Bot"
+        )
+        
+        # Create data directory
+        Path(Config.DATABASE_PATH).mkdir(exist_ok=True)
+        
+        # Initialize components
+        self.db = DatabaseManager(f"{Config.DATABASE_PATH}/players.db")
+        self.steam_checker = SteamChecker(Config.STEAM_API_KEY)
+        self.bm_checker = BattleMetricsChecker(Config.BATTLEMETRICS_TOKEN)
+        self.ban_checker = BanChecker(
+            Config.SELF_BOT_TOKEN,
+            Config.ATLAS_CHANNEL_ID,
+            Config.ATLAS_BOT_USER_ID,
+            f"{Config.DATABASE_PATH}/bans.db"
+        )
+        self.discord_tracker = DiscordTracker(f"{Config.DATABASE_PATH}/discord_tracking.db")
+        self.hashtag_tracker = YouTubeHashtagTracker(
+            f"{Config.DATABASE_PATH}/youtube_tracker.db",
+            Config.YOUTUBE_API_KEY
+        )
+        self.video_osint = VideoOSINT(f"{Config.DATABASE_PATH}/video_osint.db")
+        self.profile_matcher = ProfilePictureMatcher(f"{Config.DATABASE_PATH}/video_osint.db")
+        
+        # Statistics
+        self.stats = {
+            'players_checked': 0,
+            'bans_found': 0,
+            'profiles_matched': 0,
+            'videos_analyzed': 0,
+            'uptime_start': datetime.now()
+        }
+    
+    async def setup_hook(self):
+        """Called when bot is starting up"""
+        logger.info("Setting up bot...")
+        
+        try:
+            # Add all command groups
+            await self.add_cog(MainCommands(self))
+            await self.add_cog(HashtagCommands(self))
+            await self.add_cog(VideoOSINTCommands(self))
+            await self.add_cog(BanCheckerCommands(
+                self,
+                Config.SELF_BOT_TOKEN,
+                Config.ATLAS_CHANNEL_ID,
+                Config.ATLAS_BOT_USER_ID
+            ))
+            await self.add_cog(DiscordEventHandler(self))
+            
+            # Start background tasks
+            if not self.update_tracked_players.is_running():
+                self.update_tracked_players.start()
+            
+            if not self.collect_statistics.is_running():
+                self.collect_statistics.start()
+            
+            logger.info("Bot setup completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Error during bot setup: {e}")
+    
+    async def on_ready(self):
+        """Called when bot is ready"""
+        logger.info(f"Bot {self.user} is ready!")
+        logger.info(f"Connected to {len(self.guilds)} guilds")
+        
+        # Sync slash commands
+        try:
+            synced = await self.tree.sync()
+            logger.info(f"Synced {len(synced)} slash commands")
+        except Exception as e:
+            logger.error(f"Failed to sync commands: {e}")
+    
+    async def close(self):
+        """Cleanup when bot shuts down"""
+        logger.info("Shutting down bot...")
+        
+        # Stop background tasks
+        if self.update_tracked_players.is_running():
+            self.update_tracked_players.cancel()
+        
+        if self.collect_statistics.is_running():
+            self.collect_statistics.cancel()
+        
+        # Close all connections
+        await self.steam_checker.close()
+        await self.bm_checker.close()
+        await self.ban_checker.close()
+        await self.discord_tracker.close()
+        await self.hashtag_tracker.close()
+        await self.video_osint.close()
+        await self.profile_matcher.close()
+        
+        await super().close()
+        logger.info("Bot shutdown complete")
+    
+    @tasks.loop(hours=6)
+    async def update_tracked_players(self):
+        """Update tracked players every 6 hours"""
+        logger.info("Starting tracked player updates...")
+        
+        try:
+            # This would implement periodic updates for tracked players
+            # For now, just log that the task ran
+            logger.info("Tracked player update completed")
+        except Exception as e:
+            logger.error(f"Error updating tracked players: {e}")
+    
+    @tasks.loop(minutes=30)
+    async def collect_statistics(self):
+        """Collect bot statistics"""
+        try:
+            # Update database statistics, cleanup old data, etc.
+            pass
+        except Exception as e:
+            logger.error(f"Error collecting statistics: {e}")
+
+
+class MainCommands(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+    
+    @commands.slash_command(name="check", description="Comprehensive player check across all platforms")
+    async def comprehensive_check(self, ctx, steam_input: str, bm_input: str = None):
+        """Main check command that combines all checking methods"""
+        await ctx.defer()
+        
+        self.bot.stats['players_checked'] += 1
+        
+        # Extract IDs
+        steamid = self.bot.steam_checker.extract_steamid(steam_input)
+        bm_id = self.bot.bm_checker.extract_bm_id(bm_input) if bm_input else None
+        
+        if not steamid:
+            await ctx.followup.send("❌ Invalid Steam ID or URL provided")
+            return
+        
+        await ctx.followup.send("🔍 Performing comprehensive player check... This may take a moment.")
+        
+        try:
+            # Perform all checks concurrently
+            steam_task = asyncio.create_task(self.bot.steam_checker.analyze_player(steamid))
+            ban_task = asyncio.create_task(self.bot.ban_checker.comprehensive_ban_check(steamid, bm_id))
+            
+            if bm_id:
+                bm_task = asyncio.create_task(self.bot.bm_checker.analyze_player(bm_id))
+            else:
+                bm_task = asyncio.create_task(asyncio.sleep(0))  # Dummy task
+            
+            # Wait for all tasks to complete
+            steam_result, ban_result, bm_result = await asyncio.gather(
+                steam_task, ban_task, bm
+
+make it also work with this code below but without the recycling and crafting parts
+
+import time
+import re
+import logging
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from enum import Enum
+from math import ceil
+from typing import List, Tuple, Optional, Dict, Any
+import asyncio
+
+import aiohttp
+import discord
+from discord.ext import commands
+from discord import app_commands
+from bs4 import BeautifulSoup
+
+# Import your configuration and utility functions
+from config import (
+    BOT_TOKEN, SELF_BOT_TOKEN, ATLAS_CHANNEL_ID, VITAL_CHANNEL_ID,
+    ATLAS_BOT_USER_ID, VITAL_BOT_USER_ID, BM_API_KEY, STEAM_API_KEY,
+    RUST_APP_ID, ATLAS_COOLDOWN_SECONDS
+)
+from utils import (
+    cleanup_text, send_external_message, wait_for_external_reply,
+    extract_battlemetrics_url, get_top_servers_from_bm_api, resolve_steamid,
+    get_steam_stats, format_yield,
+    recycler_recipes_60, recycler_recipes_40
+)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# ----------------------------
+# Constants and Enums
+# ----------------------------
+class Efficiency(Enum):
+    SIXTY = "60"
+    FORTY = "40"
+
+class BotLabel(Enum):
+    ATLAS = "atlas"
+    VITAL = "vital"
+
+# ----------------------------
+# Data Classes
+# ----------------------------
+@dataclass
+class ServerInfo:
+    name: str = "Unknown"
+    ip: str = "N/A"
+    port: str = "N/A"
+    map: str = "N/A"
+    players: str = "N/A"
+    max_players: str = "N/A"
+    uptime: str = "N/A"
+    last_wipe: str = "N/A"
+
+@dataclass
+class PlayerData:
+    current_servers: List[str]
+    server_details: ServerInfo
+    previous_names: List[str]
+
+# ----------------------------
+# HTTP Session Manager
+# ----------------------------
+class HTTPSessionManager:
+    def __init__(self):
+        self._session: Optional[aiohttp.ClientSession] = None
+    
+    async def get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            connector = aiohttp.TCPConnector(limit=100, limit_per_host=30)
+            timeout = aiohttp.ClientTimeout(total=30)
+            self._session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                headers={'User-Agent': 'Discord Bot/1.0'}
+            )
+        return self._session
+    
+    async def close(self):
+        if self._session and not self._session.closed:
+            await self._session.close()
+
+# Global session manager
+session_manager = HTTPSessionManager()
+
+# ----------------------------
+# Reply Processing
+# ----------------------------
+class ReplyProcessor:
+    @staticmethod
+    def process_reply(reply_data: Dict[str, Any], label: BotLabel) -> Tuple[str, List[discord.Embed]]:
+        """
+        Processes an external reply (both content and embeds) and removes occurrences of ':VitalLove:'
+        from all text fields for Vital replies.
+        Returns a tuple (content_text, list_of_embeds).
+        """
+        content_text = cleanup_text(reply_data.get("content", ""), preserve_newlines=True)
+        
+        if label == BotLabel.VITAL:
+            content_text = content_text.replace(":VitalLove:", "")
+        
+        processed_embeds = []
+        for embed_data in reply_data.get("embeds", []):
+            processed_embed = ReplyProcessor._process_embed(embed_data, label)
+            processed_embeds.append(processed_embed)
+        
+        return content_text, processed_embeds
+    
+    @staticmethod
+    def _process_embed(embed_data: Dict[str, Any], label: BotLabel) -> discord.Embed:
+        """Process a single embed and clean up text for Vital replies."""
+        title = cleanup_text(embed_data.get("title", ""), True)
+        description = cleanup_text(embed_data.get("description", ""), True)
+        
+        if label == BotLabel.VITAL:
+            title = title.replace(":VitalLove:", "")
+            description = description.replace(":VitalLove:", "")
+        
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=embed_data.get("color", 0)
+        )
+        
+        # Process fields
+        for field in embed_data.get("fields", []):
+            field_name = cleanup_text(field.get("name", ""), True)
+            field_value = cleanup_text(field.get("value", ""), True)
+            
+            if label == BotLabel.VITAL:
+                field_name = field_name.replace(":VitalLove:", "")
+                field_value = field_value.replace(":VitalLove:", "")
+            
+            embed.add_field(
+                name=field_name,
+                value=field_value,
+                inline=field.get("inline", False)
+            )
+        
+        # Process footer, thumbnail, image, author
+        if "footer" in embed_data:
+            embed.set_footer(text=cleanup_text(embed_data["footer"].get("text", ""), True))
+        
+        if "thumbnail" in embed_data:
+            embed.set_thumbnail(url=embed_data["thumbnail"].get("url", ""))
+        
+        if "image" in embed_data:
+            embed.set_image(url=embed_data["image"].get("url", ""))
+        
+        if "author" in embed_data:
+            author = embed_data["author"]
+            embed.set_author(
+                name=cleanup_text(author.get("name", ""), True),
+                url=author.get("url", ""),
+                icon_url=author.get("icon_url", "")
+            )
+        
+        return embed
+
+# ----------------------------
+# BattleMetrics API Client
+# ----------------------------
+class BattleMetricsClient:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.base_url = "https://api.battlemetrics.com"
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json"
+        }
+    
+    async def get_current_server_info(self, bm_url: str) -> Optional[ServerInfo]:
+        """
+        Attempts to retrieve the player's current server info from the BM API.
+        Returns ServerInfo if available, otherwise None.
+        """
+        match = re.search(r"battlemetrics\.com/players/(\d+)", bm_url)
+        if not match:
+            logger.debug("No player ID found in BM URL.")
+            return None
+        
+        player_id = match.group(1)
+        api_url = f"{self.base_url}/players/{player_id}?include=server,playerCounter"
+        
+        try:
+            session = await session_manager.get_session()
+            async with session.get(api_url, headers=self.headers) as response:
+                logger.debug("BM API (current server) response status: %s", response.status)
+                
+                if response.status != 200:
+                    logger.error("BM API request failed with status %s", response.status)
+                    return None
+                
+                data = await response.json()
+                return self._parse_server_info(data)
+        
+        except Exception as e:
+            logger.error(f"Error fetching current server info: {e}")
+            return None
+    
+    def _parse_server_info(self, data: Dict[str, Any]) -> Optional[ServerInfo]:
+        """Parse server info from BM API response."""
+        current_server_rel = (
+            data.get("data", {})
+            .get("relationships", {})
+            .get("server", {})
+            .get("data", {})
+        )
+        
+        if not current_server_rel:
+            logger.debug("No current server relationship in BM data.")
+            return None
+        
+        current_server_id = current_server_rel.get("id")
+        
+        for item in data.get("included", []):
+            if item.get("type") == "server" and item.get("id") == current_server_id:
+                attributes = item.get("attributes", {})
+                return ServerInfo(
+                    name=attributes.get("name", "Unknown Server"),
+                    players=str(attributes.get("players", "N/A")),
+                    max_players=str(attributes.get("maxPlayers", "N/A")),
+                    map=attributes.get("map", "N/A"),
+                    uptime=str(attributes.get("uptime", "N/A")),
+                    ip=attributes.get("ip", "N/A"),
+                    port=str(attributes.get("port", "N/A"))
+                )
+        
+        logger.debug("Current server info not found in BM data.")
+        return None
+
+# ----------------------------
+# Web Scraper
+# ----------------------------
+class WebScraper:
+    @staticmethod
+    async def fetch_html(url: str) -> Optional[str]:
+        """Fetches HTML from a URL with error handling."""
+        try:
+            session = await session_manager.get_session()
+            async with session.get(url) as response:
+                if response.status != 200:
+                    logger.warning(f"Failed to fetch {url}; status: {response.status}")
+                    return None
+                return await response.text()
+        except Exception as e:
+            logger.error(f"Error fetching {url}: {e}")
+            return None
+    
+    @staticmethod
+    async def scrape_server_page(server_url: str) -> ServerInfo:
+        """
+        Fetches and parses the BM server page to extract extended details.
+        Returns ServerInfo with available details.
+        """
+        server_info = ServerInfo()
+        html = await WebScraper.fetch_html(server_url)
+        
+        if not html:
+            return server_info
+        
+        soup = BeautifulSoup(html, "html.parser")
+        
+        # Server Name: Try <h1> or <title>
+        h1 = soup.find("h1")
+        if h1:
+            server_info.name = h1.get_text(strip=True)
+        else:
+            title_tag = soup.find("title")
+            if title_tag:
+                server_info.name = title_tag.get_text(strip=True)
+        
+        # Extract server information from dt/dd pairs
+        WebScraper._extract_server_details(soup, server_info)
+        
+        return server_info
+    
+    @staticmethod
+    def _extract_server_details(soup: BeautifulSoup, server_info: ServerInfo):
+        """Extract server details from parsed HTML."""
+        # Look for server-info container
+        info_container = soup.find("div", class_=lambda x: x and "server-info" in x.lower())
+        
+        if info_container:
+            WebScraper._parse_info_container(info_container, server_info)
+        else:
+            WebScraper._parse_fallback_info(soup, server_info)
+    
+    @staticmethod
+    def _parse_info_container(container, server_info: ServerInfo):
+        """Parse server info from a structured container."""
+        for dt in container.find_all("dt"):
+            label_text = dt.get_text(strip=True).lower()
+            dd = dt.find_next_sibling("dd")
+            
+            if not dd:
+                continue
+            
+            value = dd.get_text(" ", strip=True)
+            
+            if "address" in label_text:
+                WebScraper._parse_address(dd, value, server_info)
+            elif "player count" in label_text or "players" in label_text:
+                WebScraper._parse_player_count(value, server_info)
+            elif "map" in label_text:
+                server_info.map = value
+            elif "uptime" in label_text:
+                server_info.uptime = value
+            elif "last wipe" in label_text:
+                WebScraper._parse_last_wipe(dd, value, server_info)
+    
+    @staticmethod
+    def _parse_fallback_info(soup: BeautifulSoup, server_info: ServerInfo):
+        """Fallback parsing when no structured container is found."""
+        # Address
+        dt_addr = soup.find("dt", string=lambda s: s and "Address" in s)
+        if dt_addr:
+            dd_addr = dt_addr.find_next_sibling("dd")
+            if dd_addr:
+                WebScraper._parse_address(dd_addr, dd_addr.get_text(strip=True), server_info)
+        
+        # Map
+        dt_map = soup.find("dt", string=lambda s: s and "Map" in s)
+        if dt_map:
+            dd_map = dt_map.find_next_sibling("dd")
+            if dd_map:
+                server_info.map = dd_map.get_text(strip=True)
+        
+        # Players
+        dt_players = soup.find("dt", string=lambda s: s and ("Player count" in s or "Players" in s))
+        if dt_players:
+            dd_players = dt_players.find_next_sibling("dd")
+            if dd_players:
+                WebScraper._parse_player_count(dd_players.get_text(strip=True), server_info)
+        
+        # Uptime
+        dt_uptime = soup.find("dt", string=lambda s: s and "Uptime" in s)
+        if dt_uptime:
+            dd_uptime = dt_uptime.find_next_sibling("dd")
+            if dd_uptime:
+                server_info.uptime = dd_uptime.get_text(strip=True)
+        
+        # Last Wipe
+        dt_wipe = soup.find("dt", string=lambda s: s and "Last Wipe" in s)
+        if dt_wipe:
+            dd_wipe = dt_wipe.find_next_sibling("dd")
+            if dd_wipe:
+                WebScraper._parse_last_wipe(dd_wipe, dd_wipe.get_text(strip=True), server_info)
+    
+    @staticmethod
+    def _parse_address(dd_element, value: str, server_info: ServerInfo):
+        """Parse IP and port from address field."""
+        btn = dd_element.find("button", attrs={"data-clipboard-text": True})
+        if btn:
+            clipboard = btn.get("data-clipboard-text")
+            parts = clipboard.split(":")
+        else:
+            parts = value.split(":")
+        
+        if len(parts) == 2:
+            server_info.ip = parts[0]
+            server_info.port = parts[1]
+    
+    @staticmethod
+    def _parse_player_count(value: str, server_info: ServerInfo):
+        """Parse player count from value string."""
+        pm_match = re.search(r"(\d+)\s*/\s*(\d+)", value)
+        if pm_match:
+            server_info.players = pm_match.group(1)
+            server_info.max_players = pm_match.group(2)
+    
+    @staticmethod
+    def _parse_last_wipe(dd_element, value: str, server_info: ServerInfo):
+        """Parse last wipe date from element."""
+        time_tag = dd_element.find("time")
+        if time_tag and time_tag.get("datetime"):
+            server_info.last_wipe = time_tag.get_text(strip=True)
+        else:
+            server_info.last_wipe = value
+    
+    @staticmethod
+    async def scrape_bm_player_html(bm_url: str) -> PlayerData:
+        """
+        Fetches the BM player's page and extracts player data.
+        Returns PlayerData with current servers, server details, and previous names.
+        """
+        html = await WebScraper.fetch_html(bm_url)
+        if not html:
+            return PlayerData([], ServerInfo(), [])
+        
+        soup = BeautifulSoup(html, "html.parser")
+        current_servers = []
+        server_details = ServerInfo()
+        previous_names = []
+        
+        # Extract current servers
+        dt_current = soup.find("dt", string=lambda s: s and "Current Server" in s)
+        if dt_current:
+            dd_current = dt_current.find_next_sibling("dd")
+            if dd_current:
+                server_links = dd_current.find_all("a")
+                for a in server_links:
+                    name = a.get_text(strip=True)
+                    if name:
+                        current_servers.append(name)
+                    
+                    href = a.get("href", "")
+                    if href and "/servers/rust/" in href:
+                        server_page_url = "https://www.battlemetrics.com" + href
+                        server_details = await WebScraper.scrape_server_page(server_page_url)
+                        break  # Follow only the first server link
+        
+        # Extract previous names
+        dt_prev = soup.find("dt", string=lambda s: s and "Previous Names" in s)
+        if dt_prev:
+            dd_prev = dt_prev.find_next_sibling("dd")
+            if dd_prev:
+                li_items = dd_prev.find_all("li")
+                for li in li_items:
+                    name = li.get_text(strip=True)
+                    if name:
+                        previous_names.append(name)
+        
+        return PlayerData(current_servers, server_details, previous_names)
+
+# ----------------------------
+# UI Views
+# ----------------------------
+class BMServerView(discord.ui.View):
+    def __init__(self, server_list: List[str]):
+        super().__init__(timeout=60)
+        self.server_list = server_list
+        self.current_page = 1  # Page 1: top 10; Page 2: top 20
+        
+        self.toggle_button = discord.ui.Button(
+            label="Show More",
+            style=discord.ButtonStyle.secondary
+        )
+        self.toggle_button.callback = self.toggle_page
+        self.add_item(self.toggle_button)
+    
+    async def toggle_page(self, interaction: discord.Interaction):
+        if self.current_page == 1:
+            self.current_page = 2
+            self.toggle_button.label = "Show Less"
+            content = "**Top 20 servers (BM)**:\n" + "\n".join(self.server_list)
+        else:
+            self.current_page = 1
+            self.toggle_button.label = "Show More"
+            content = "**Top 10 servers (BM)**:\n" + "\n".join(self.server_list[:10])
+        
+        await interaction.response.edit_message(content=content, view=self)
+
+class TranslateView(discord.ui.View):
+    def __init__(self, embed_en: discord.Embed, embed_ru: discord.Embed):
+        super().__init__(timeout=300)  # 5 minutes timeout
+        self.embed_en = embed_en
+        self.embed_ru = embed_ru
+        self.is_russian = False
+
+    @discord.ui.button(label="Translate to Russian", style=discord.ButtonStyle.primary)
+    async def translate(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.is_russian:
+            await interaction.response.edit_message(embed=self.embed_ru, view=self)
+            button.label = "Translate to English"
+            self.is_russian = True
+        else:
+            await interaction.response.edit_message(embed=self.embed_en, view=self)
+            button.label = "Translate to Russian"
+            self.is_russian = False
+
+# ----------------------------
+# Bot Class
+# ----------------------------
+class MyBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True  # Enable message content intent if needed
+        
+        super().__init__(
+            command_prefix="/",
+            intents=intents,
+            help_command=None
+        )
+        
+        self.last_atlas_call = 0.0
+        self.bm_client = BattleMetricsClient(BM_API_KEY)
+        self.reply_processor = ReplyProcessor()
+    
+    async def setup_hook(self) -> None:
+        try:
+            # Load cogs if they exist
+            await self.load_extension("cogs.craft")
+            logger.info("Loaded craft cog successfully")
+        except Exception as e:
+            logger.warning(f"Failed to load craft cog: {e}")
+        
+        try:
+            await self.tree.sync()
+            logger.info("Bot is ready and slash commands are synced.")
+        except Exception as e:
+            logger.error(f"Failed to sync commands: {e}")
+    
+    async def close(self):
+        await session_manager.close()
+        await super().close()
+
+bot = MyBot()
+
+# ----------------------------
+# Command Handlers
+# ----------------------------
+class CommandHandlers:
+    def __init__(self, bot: MyBot):
+        self.bot = bot
+    
+    async def handle_stats_command(self, interaction: discord.Interaction, steamid: str):
+        """Handle the stats command with proper error handling."""
+        await interaction.response.defer()
+        
+        try:
+            # Resolve SteamID
+            sid = await resolve_steamid(steamid)
+            if not sid:
+                await interaction.followup.send("❌ Could not resolve numeric SteamID.")
+                return
+            
+            # Get Steam stats
+            embed_en, embed_ru = await get_steam_stats(sid)
+            if embed_en is None:
+                await interaction.followup.send("❌ Error retrieving Steam stats.")
+                return
+            
+            view = TranslateView(embed_en, embed_ru)
+            await interaction.followup.send(embed=embed_en, view=view)
+            
+            # Get external bot replies
+            atlas_reply, vital_reply = await self._get_external_replies(sid, interaction)
+            
+            # Process and send replies
+            await self._send_bot_replies(interaction, atlas_reply, vital_reply)
+            
+            # Handle server info and top servers
+            if atlas_reply:
+                await self._handle_server_info(interaction, atlas_reply)
+            else:
+                await interaction.followup.send("ℹ️ No BattleMetrics URL found in Atlas reply.")
+        
+        except Exception as e:
+            logger.error(f"Error in stats command: {e}")
+            await interaction.followup.send("❌ An error occurred while processing your request.")
+    
+    async def _get_external_replies(self, sid: str, interaction: discord.Interaction) -> Tuple[Optional[Dict], Optional[Dict]]:
+        """Get replies from Atlas and Vital bots."""
+        atlas_reply = None
+        vital_reply = None
+        
+        # Atlas with cooldown check
+        now = time.time()
+        if (now - self.bot.last_atlas_call) < ATLAS_COOLDOWN_SECONDS:
+            await interaction.followup.send("⏰ Atlas is on cooldown.")
+        else:
+            self.bot.last_atlas_call = now
+            atlas_msg = await send_external_message(sid, ATLAS_CHANNEL_ID, SELF_BOT_TOKEN, ",player ")
+            if atlas_msg:
+                atlas_reply = await wait_for_external_reply(
+                    ATLAS_CHANNEL_ID, atlas_msg["id"], SELF_BOT_TOKEN, ATLAS_BOT_USER_ID, 60
+                )
+        
+        # Vital
+        vital_msg = await send_external_message(sid, VITAL_CHANNEL_ID, SELF_BOT_TOKEN, "v!stats ")
+        if vital_msg:
+            vital_reply = await wait_for_external_reply(
+                VITAL_CHANNEL_ID, vital_msg["id"], SELF_BOT_TOKEN, VITAL_BOT_USER_ID, 60
+            )
+        
+        return atlas_reply, vital_reply
+    
+    async def _send_bot_replies(self, interaction: discord.Interaction, atlas_reply: Optional[Dict], vital_reply: Optional[Dict]):
+        """Send processed bot replies."""
+        # Atlas reply
+        if atlas_reply:
+            content_text, atlas_embeds = self.bot.reply_processor.process_reply(atlas_reply, BotLabel.ATLAS)
+            if content_text.strip():
+                await interaction.followup.send(f"**Atlas reply:** {content_text}")
+            if atlas_embeds:
+                await interaction.followup.send(content="**Atlas reply (embed):**", embeds=atlas_embeds)
+        
+        # Vital reply
+        if vital_reply:
+            content_text, vital_embeds = self.bot.reply_processor.process_reply(vital_reply, BotLabel.VITAL)
+            if content_text.strip():
+                await interaction.followup.send(f"**Vital reply:** {content_text}")
+            if vital_embeds:
+                await interaction.followup.send(content="**Vital reply (embed):**", embeds=vital_embeds)
+    
+    async def _handle_server_info(self, interaction: discord.Interaction, atlas_reply: Dict):
+        """Handle server info extraction and display."""
+        bm_link = extract_battlemetrics_url(atlas_reply)
+        logger.debug("Extracted BM URL: %s", bm_link)
+        
+        if not bm_link:
+            return
+        
+        # Try BM API first, then fallback to HTML scraping
+        current_server = await self.bot.bm_client.get_current_server_info(bm_link)
+        previous_names = []
+        
+        if not current_server:
+            player_data = await WebScraper.scrape_bm_player_html(bm_link)
+            current_server = player_data.server_details
+            previous_names = player_data.previous_names
+        
+        # Display server info
+        if current_server and current_server.name != "Unknown":
+            await self._send_server_embed(interaction, current_server, previous_names)
+        else:
+            await interaction.followup.send("ℹ️ No current server info available via BM API or HTML scraping.")
+        
+        # Display top servers
+        await self._send_top_servers(interaction, bm_link)
+    
+    async def _send_server_embed(self, interaction: discord.Interaction, server_info: ServerInfo, previous_names: List[str]):
+        """Send server information embed."""
+        server_embed = discord.Embed(
+            title="🎮 Current Server Info",
+            description=f"**{server_info.name}**",
+            color=discord.Color.green()
+        )
+        
+        server_embed.add_field(
+            name="👥 Players",
+            value=f"{server_info.players}/{server_info.max_players}",
+            inline=True
+        )
+        server_embed.add_field(name="🗺️ Map", value=server_info.map, inline=True)
+        server_embed.add_field(name="⏱️ Uptime", value=server_info.uptime, inline=True)
+        server_embed.add_field(
+            name="🌐 IP:Port",
+            value=f"{server_info.ip}:{server_info.port}",
+            inline=False
+        )
+        
+        if server_info.last_wipe and server_info.last_wipe != "N/A":
+            server_embed.add_field(name="🔄 Last Wipe", value=server_info.last_wipe, inline=False)
+        
+        if previous_names:
+            names_text = ", ".join(previous_names[:5])  # Limit to first 5 names
+            if len(previous_names) > 5:
+                names_text += f" (+{len(previous_names) - 5} more)"
+            server_embed.add_field(name="📝 Previous Names", value=names_text, inline=False)
+        
+        await interaction.followup.send(embed=server_embed)
+    
+    async def _send_top_servers(self, interaction: discord.Interaction, bm_link: str):
+        """Send top servers list."""
+        top_servers = await get_top_servers_from_bm_api(bm_link)
+        if top_servers:
+            if len(top_servers) > 10:
+                content = "**🏆 Top 10 servers (BM)**:\n" + "\n".join(top_servers[:10])
+                view = BMServerView(top_servers)
+                await interaction.followup.send(content=content, view=view)
+            else:
+                await interaction.followup.send("**🏆 Top servers (BM)**:\n" + "\n".join(top_servers))
+        else:
+            await interaction.followup.send("ℹ️ No server data found from BM API.")
+
+# Initialize command handlers
+command_handlers = CommandHandlers(bot)
+
+# ----------------------------
+# Slash Commands
+# ----------------------------
+@bot.tree.command(name="stats", description="Show Steam stats, current server & BM top servers.")
+async def stats_command(interaction: discord.Interaction, steamid: str):
+    await command_handlers.handle_stats_command(interaction, steamid)
+
+@bot.tree.command(name="atlas", description="Show Atlas info only.")
+async def atlas_command(interaction: discord.Interaction, steamid: str):
+    await interaction.response.defer()
+    
+    try:
+        sid = await resolve_steamid(steamid)
+        if not sid:
+            await interaction.followup.send("❌ Could not resolve SteamID.")
+            return
+        
+        now = time.time()
+        if (now - bot.last_atlas_call) < ATLAS_COOLDOWN_SECONDS:
+            await interaction.followup.send("⏰ Atlas is on cooldown.")
+            return
+        
+        bot.last_atlas_call = now
+        msg = await send_external_message(sid, ATLAS_CHANNEL_ID, SELF_BOT_TOKEN, ",player ")
+        
+        if not msg:
+            await interaction.followup.send("❌ Error sending to Atlas channel.")
+            return
+        
+        reply = await wait_for_external_reply(
+            ATLAS_CHANNEL_ID, msg["id"], SELF_BOT_TOKEN, ATLAS_BOT_USER_ID, 60
+        )
+        
+        if not reply:
+            await interaction.followup.send("❌ No Atlas reply received.")
+            return
+        
+        content_text, embeds = bot.reply_processor.process_reply(reply, BotLabel.ATLAS)
+        
+        if content_text.strip():
+            await interaction.followup.send(f"**Atlas reply:** {content_text}")
+        if embeds:
+            await interaction.followup.send(content="**Atlas reply (embed):**", embeds=embeds)
+    
+    except Exception as e:
+        logger.error(f"Error in atlas command: {e}")
+        await interaction.followup.send("❌ An error occurred while processing your request.")
+
+@bot.tree.command(name="recycle", description="Recycling calculator for components.")
+@app_commands.describe(
+    item="The item to recycle",
+    quantity="Number of items to recycle",
+    efficiency="Recycler efficiency (60% or 40%)"
+)
+@app_commands.choices(efficiency=[
+    app_commands.Choice(name="60%", value="60"),
+    app_commands.Choice(name="40%", value="40")
+])
+async def recycle_command(interaction: discord.Interaction, item: str, quantity: int, efficiency: str):
+    await interaction.response.defer()
+    
+    try:
+        if quantity <= 0:
+            await interaction.followup.send("❌ Quantity must be greater than 0.")
+            return
+        
+        if quantity > 10000:
+            await interaction.followup.send("❌ Quantity cannot exceed 10,000.")
+            return
+        
+        recipes = recycler_recipes_60 if efficiency == "60" else recycler_recipes_40
+        key = item.lower().replace(" ", "_")
+        
+        if key not in recipes:
+            await interaction.followup.send(f"❌ No recycling recipe found for '{item}'.")
+            return
+        
+        yield_dict = {k: v * quantity for k, v in recipes[key].items()}
+        
+        # Create embeds for both languages
+        en_response = f"**♻️ Recycling yield for {item.capitalize()} x{quantity} (Eff: {efficiency}%)**:\n" + format_yield(yield_dict)
+        ru_response = en_response.replace(
+            "Recycling yield for", "Выход при переработке для"
+        ).replace("Eff:", "Эффективность:")
+        
+        embed_en = discord.Embed(
+            title="♻️ Recycling Calculator",
+            description=en_response,
+            color=discord.Color.blue()
+        )
+        
+        embed_ru = discord.Embed(
+            title="♻️ Калькулятор переработки",
+            description=ru_response,
+            color=discord.Color.blue()
+        )
+        
+        view = TranslateView(embed_en, embed_ru)
+        await interaction.followup.send(embed=embed_en, view=view)
+    
+    except Exception as e:
+        logger.error(f"Error in recycle command: {e}")
+        await interaction.followup.send("❌ An error occurred while calculating recycling yield.")
+
+# ----------------------------
+# Error Handlers
+# ----------------------------
+@bot.event
+async def on_ready():
+    logger.info(f"{bot.user} has connected to Discord!")
+    logger.info(f"Bot is in {len(bot.guilds)} guilds")
+
+@bot.event
+async def on_command_error(ctx, error):
+    """Global error handler for traditional commands."""
+    logger.error(f"Command error: {error}")
+    
+    if isinstance(error, commands.CommandNotFound):
+        return  # Ignore command not found errors
+    
+    await ctx.send("❌ An error occurred while processing the command.")
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    """Global error handler for slash commands."""
+    logger.error(f"App command error: {error}")
+    
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.send_message("❌ An error occurred while processing the command.", ephemeral=True)
+        else:
+            await interaction.followup.send("❌ An error occurred while processing the command.", ephemeral=True)
+    except Exception as e:
+        logger.error(f"Failed to send error message: {e}")
+
+# ----------------------------
+# Utility Functions
+# ----------------------------
+async def shutdown_handler():
+    """Clean shutdown handler."""
+    logger.info("Shutting down bot...")
+    await session_manager.close()
+    await bot.close()
+
+# ----------------------------
+# Main Entry Point
+# ----------------------------
+async def main():
+    """Main async entry point."""
+    try:
+        async with bot:
+            await bot.start(BOT_TOKEN)
+    except KeyboardInterrupt:
+        logger.info("Received interrupt signal")
+    except Exception as e:
+        logger.error(f"Bot crashed: {e}")
+    finally:
+        await shutdown_handler()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+
+import re
+import time
+import asyncio
+import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, asdict
+from enum import Enum
+from typing import Optional, Dict, List, Tuple, Any, Union
+from contextlib import asynccontextmanager
+
+import aiohttp
+import discord
+
+from config import STEAM_API_KEY, BM_API_KEY, RUST_APP_ID
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# ==============================================================================
+# CONSTANTS AND ENUMS
+# ==============================================================================
+
+class Language(Enum):
+    ENGLISH = "en"
+    RUSSIAN = "ru"
+
+# ==============================================================================
+# DATA CLASSES
+# ==============================================================================
+    
+
+@dataclass
+class PlayerStats:
+    """Represents comprehensive player statistics."""
+    persona_name: str = "Unknown"
+    profile_url: str = ""
+    rust_playtime_hours: float = 0.0
+    kills: int = 0
+    deaths: int = 0
+    bullets_fired: int = 0
+    bullets_hit: int = 0
+    headshots: int = 0
+    wood_gathered: int = 0
+    stone_gathered: int = 0
+    metal_gathered: int = 0
+    barrels_destroyed: int = 0
+    achievements: str = "N/A"
+    
+    @property
+    def kd_ratio(self) -> Optional[float]:
+        return self.kills / self.deaths if self.deaths > 0 else None
+    
+    @property
+    def accuracy_percentage(self) -> Optional[float]:
+        return (self.bullets_hit / self.bullets_fired * 100) if self.bullets_fired > 0 else None
+    
+    @property
+    def headshot_percentage(self) -> Optional[float]:
+        return (self.headshots / self.bullets_hit * 100) if self.bullets_hit > 0 else None
+
+# ==============================================================================
+# EXCEPTIONS
+# ==============================================================================
+
+class APIError(Exception):
+    """Base exception for API-related errors."""
+    pass
+
+class SteamAPIError(APIError):
+    """Exception for Steam API errors."""
+    pass
+
+class BattleMetricsAPIError(APIError):
+    """Exception for BattleMetrics API errors."""
+    pass
+
+class DiscordAPIError(APIError):
+    """Exception for Discord API errors."""
+    pass
+
+# ==============================================================================
+# UTILITY CLASSES
+# ==============================================================================
+
+class TextFormatter:
+    """Handles text formatting and cleanup operations."""
+    
+    @staticmethod
+    def format_value(val: float) -> str:
+        """Format a number with backticks, showing integers without decimals."""
+        if abs(val - round(val)) < 1e-6:
+            return f"`{int(round(val))}`"
+        return f"`{val:.2f}`"
+    
+    @staticmethod
+    def cleanup_text(text: str, preserve_newlines: bool = False) -> str:
+        """Remove HTML tags and clean up text formatting."""
+        text = re.sub(r"<[^>]+>", "", text)
+        text = text.replace("rcon/", "")
+        
+        if preserve_newlines:
+            lines = text.splitlines()
+            cleaned_lines = [" ".join(line.split()) for line in lines]
+            return "\n".join(cleaned_lines)
+        
+        return " ".join(text.split())
+   
+
+# ==============================================================================
+# API CLIENT BASE CLASS
+# ==============================================================================
+
+class APIClient(ABC):
+    """Abstract base class for API clients."""
+    
+    def __init__(self, base_url: str, api_key: Optional[str] = None):
+        self.base_url = base_url.rstrip('/')
+        self.api_key = api_key
+        
+    @asynccontextmanager
+    async def _get_session(self):
+        """Context manager for aiohttp sessions."""
+        async with aiohttp.ClientSession() as session:
+            yield session
+    
+    @abstractmethod
+    async def _make_request(self, endpoint: str, **kwargs) -> Dict[str, Any]:
+        """Make an API request. Must be implemented by subclasses."""
+        pass
+
+# ==============================================================================
+# STEAM API CLIENT
+# ==============================================================================
+
+class SteamAPIClient(APIClient):
+    """Client for Steam Web API."""
+    
+    def __init__(self):
+        super().__init__("https://api.steampowered.com", STEAM_API_KEY)
+    
+    async def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+        """Make a request to Steam API."""
+        if params is None:
+            params = {}
+        
+        params['key'] = self.api_key
+        url = f"{self.base_url}/{endpoint}"
+        
+        async with self._get_session() as session:
+            try:
+                async with session.get(url, params=params) as response:
+                    if response.status != 200:
+                        raise SteamAPIError(f"Steam API request failed: {response.status}")
+                    return await response.json()
+            except aiohttp.ClientError as e:
+                raise SteamAPIError(f"Steam API connection error: {e}")
+    
+    async def resolve_vanity_url(self, vanity_url: str) -> Optional[str]:
+        """Resolve a Steam vanity URL to a SteamID."""
+        try:
+            data = await self._make_request(
+                "ISteamUser/ResolveVanityURL/v0001/",
+                {"vanityurl": vanity_url}
+            )
+            
+            response = data.get("response", {})
+            if response.get("success") == 1:
+                logger.debug(f"Resolved vanity URL {vanity_url} to SteamID {response['steamid']}")
+                return response["steamid"]
+            
+            logger.warning(f"Failed to resolve vanity URL: {vanity_url}")
+            return None
+            
+        except SteamAPIError as e:
+            logger.error(f"Error resolving vanity URL: {e}")
+            return None
+    
+    async def get_player_summary(self, steamid: str) -> Dict[str, Any]:
+        """Get player summary information."""
+        data = await self._make_request(
+            "ISteamUser/GetPlayerSummaries/v0002/",
+            {"steamids": steamid}
+        )
+        
+        players = data.get("response", {}).get("players", [])
+        return players[0] if players else {}
+    
+    async def get_owned_games(self, steamid: str) -> List[Dict[str, Any]]:
+        """Get list of owned games for a player."""
+        data = await self._make_request(
+            "IPlayerService/GetOwnedGames/v0001/",
+            {"steamid": steamid, "include_appinfo": 1, "format": "json"}
+        )
+        
+        return data.get("response", {}).get("games", [])
+    
+    async def get_player_stats(self, steamid: str, appid: int) -> Dict[str, int]:
+        """Get player statistics for a specific game."""
+        try:
+            data = await self._make_request(
+                "ISteamUserStats/GetUserStatsForGame/v0002/",
+                {"appid": appid, "steamid": steamid}
+            )
+            
+            stats_list = data.get("playerstats", {}).get("stats", [])
+            return {stat["name"]: stat["value"] for stat in stats_list}
+            
+        except SteamAPIError as e:
+            logger.warning(f"Could not fetch player stats: {e}")
+            return {}
+    
+    async def get_player_achievements(self, steamid: str, appid: int) -> str:
+        """Get player achievements for a specific game."""
+        try:
+            data = await self._make_request(
+                "ISteamUserStats/GetPlayerAchievements/v0001/",
+                {"appid": appid, "steamid": steamid}
+            )
+            
+            achievements = data.get("playerstats", {}).get("achievements", [])
+            if achievements:
+                unlocked = sum(1 for ach in achievements if ach.get("achieved") == 1)
+                total = len(achievements)
+                return f"{unlocked}/{total}"
+            
+            return "N/A"
+            
+        except SteamAPIError as e:
+            logger.warning(f"Could not fetch achievements: {e}")
+            return "N/A"
+
+# ==============================================================================
+# BATTLEMETRICS API CLIENT
+# ==============================================================================
+
+class BattleMetricsAPIClient(APIClient):
+    """Client for BattleMetrics API."""
+    
+    def __init__(self):
+        super().__init__("https://api.battlemetrics.com", BM_API_KEY)
+    
+    async def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict[str, Any]:
+        """Make a request to BattleMetrics API."""
+        url = f"{self.base_url}/{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "application/json"
+        }
+        
+        async with self._get_session() as session:
+            try:
+                async with session.get(url, headers=headers, params=params) as response:
+                    if response.status != 200:
+                        raise BattleMetricsAPIError(f"BattleMetrics API request failed: {response.status}")
+                    return await response.json()
+            except aiohttp.ClientError as e:
+                raise BattleMetricsAPIError(f"BattleMetrics API connection error: {e}")
+    
+    def extract_player_id_from_url(self, bm_url: str) -> Optional[str]:
+        """Extract player ID from BattleMetrics URL."""
+        match = re.search(r"battlemetrics\.com/players/(\d+)", bm_url)
+        return match.group(1) if match else None
+    
+    async def get_player_servers(self, player_id: str) -> List[str]:
+        """Get top servers for a player by playtime."""
+        try:
+            data = await self._make_request(
+                f"players/{player_id}",
+                {"include": "server,playerCounter"}
+            )
+            
+            servers = {}
+            server_playtime = {}
+            
+            # Process included data
+            for item in data.get("included", []):
+                item_type = item.get("type")
+                item_id = item.get("id")
+                
+                if item_type == "server":
+                    name = item.get("attributes", {}).get("name", "Unknown Server")
+                    servers[item_id] = name.replace("\n", " ").strip()
+                    
+                    # Get playtime from meta if available
+                    meta_playtime = item.get("meta", {}).get("timePlayed", 0)
+                    server_playtime[item_id] = meta_playtime
+                
+                elif item_type == "playerCounter":
+                    # Add counter playtime
+                    rel_server = item.get("relationships", {}).get("server", {}).get("data")
+                    if rel_server and isinstance(rel_server, dict):
+                        server_id = rel_server.get("id")
+                        counter_playtime = item.get("attributes", {}).get("value", 0)
+                        server_playtime[server_id] = server_playtime.get(server_id, 0) + counter_playtime
+            
+            # Convert to hours and sort
+            server_hours = {
+                servers.get(server_id, "Unknown Server"): playtime / 3600.0
+                for server_id, playtime in server_playtime.items()
+            }
+            
+            sorted_servers = sorted(server_hours.items(), key=lambda x: x[1], reverse=True)[:20]
+            
+            return [f"`{name} - {hours:.2f} hrs`" for name, hours in sorted_servers]
+            
+        except BattleMetricsAPIError as e:
+            logger.error(f"Error fetching player servers: {e}")
+            return []
+
+# ==============================================================================
+# DISCORD MESSAGE HANDLER
+# ==============================================================================
+
+class DiscordMessageHandler:
+    """Handles Discord message operations."""
+    
+    @staticmethod
+    async def send_external_message(
+        steamid: str, 
+        channel_id: str, 
+        token: str, 
+        prefix: str
+    ) -> Optional[Dict[str, Any]]:
+        """Send a message to an external Discord channel."""
+        content = f"{prefix}{steamid}"
+        url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
+        headers = {
+            "Authorization": token,
+            "Content-Type": "application/json"
+        }
+        
+        logger.debug(f"Sending external message to channel {channel_id}: {content}")
+        
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(url, headers=headers, json={"content": content}) as response:
+                    if response.status not in (200, 201):
+                        error_text = await response.text()
+                        logger.error(f"Failed to send external message: {error_text}")
+                        return None
+                    
+                    data = await response.json()
+                    logger.debug(f"External message sent: {data}")
+                    return data
+                    
+            except aiohttp.ClientError as e:
+                raise DiscordAPIError(f"Discord API connection error: {e}")
+    
+    @staticmethod
+    async def wait_for_external_reply(
+        channel_id: str,
+        original_msg_id: str,
+        token: str,
+        bot_user_id: str,
+        timeout: int = 60
+    ) -> Optional[Dict[str, Any]]:
+        """Wait for a reply from a specific bot in an external channel."""
+        url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
+        headers = {"Authorization": token}
+        start_time = time.time()
+        
+        while (time.time() - start_time) <= timeout:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, headers=headers) as response:
+                        if response.status != 200:
+                            logger.error("Failed to get messages from external channel")
+                            return None
+                        
+                        messages = await response.json()
+                
+                for msg in messages:
+                    author_id = msg.get("author", {}).get("id")
+                    msg_id = msg.get("id", "0")
+                    
+                    if author_id == bot_user_id and int(msg_id) > int(original_msg_id):
+                        logger.info(f"Found external reply from bot in channel {channel_id}")
+                        return msg
+                
+            except aiohttp.ClientError as e:
+                logger.error(f"Error checking for external reply: {e}")
+                return None
+            
+            await asyncio.sleep(2)
+        
+        logger.warning("Timeout waiting for external reply")
+        return None
+    
+    @staticmethod
+    def extract_battlemetrics_url(msg_data: Dict[str, Any]) -> str:
+        """Extract BattleMetrics URL from Discord message data."""
+        def clean_url(url: str) -> str:
+            return url.rstrip(").")
+        
+        # Check message content
+        content = msg_data.get("content", "").replace("rcon/", "")
+        match = re.search(r"(https?://(www\.)?battlemetrics\.com/players/\S+)", content)
+        if match:
+            url = clean_url(match.group(1))
+            logger.debug(f"Found BM URL in content: {url}")
+            return url
+        
+        # Check embeds
+        for embed_data in msg_data.get("embeds", []):
+            for key in ("title", "description"):
+                text = embed_data.get(key, "").replace("rcon/", "")
+                match = re.search(r"(https?://(www\.)?battlemetrics\.com/players/\S+)", text)
+                if match:
+                    url = clean_url(match.group(1))
+                    logger.debug(f"Found BM URL in embed {key}: {url}")
+                    return url
+        
+        logger.debug("No BM URL found in message data")
+        return ""
+
+============================================================================== 
+# PLAYER STATISTICS SERVICE
+# ==============================================================================
+
+class PlayerStatsService:
+    """Service for retrieving and formatting player statistics."""
+    
+    def __init__(self):
+        self.steam_client = SteamAPIClient()
+        self.bm_client = BattleMetricsAPIClient()
+    
+    async def resolve_steamid(self, identifier: str) -> Optional[str]:
+        """Resolve various Steam identifier formats to a numeric SteamID."""
+        # Check if it's already a numeric SteamID
+        if identifier.isdigit():
+            return identifier
+        
+        # Handle Steam profile URLs
+        if "steamcommunity.com/id/" in identifier:
+            match = re.search(r"/id/([^/]+)", identifier)
+            if match:
+                vanity_name = match.group(1)
+                return await self.steam_client.resolve_vanity_url(vanity_name)
+        
+        elif "steamcommunity.com/profiles/" in identifier:
+            match = re.search(r"/profiles/(\d+)", identifier)
+            if match:
+                return match.group(1)
+        
+        # Assume it's a vanity URL name
+        return await self.steam_client.resolve_vanity_url(identifier)
+    
+    async def get_comprehensive_stats(self, steamid: str) -> PlayerStats:
+        """Get comprehensive player statistics from Steam."""
+        try:
+            # Get basic player info
+            player_summary = await self.steam_client.get_player_summary(steamid)
+            
+            # Get owned games to find Rust playtime
+            owned_games = await self.steam_client.get_owned_games(steamid)
+            rust_playtime = 0.0
+            for game in owned_games:
+                if game.get("appid") == RUST_APP_ID:
+                    rust_playtime = game.get("playtime_forever", 0) / 60.0
+                    break
+            
+            # Get Rust-specific statistics
+            rust_stats = await self.steam_client.get_player_stats(steamid, RUST_APP_ID)
+            
+            # Get achievements
+            achievements = await self.steam_client.get_player_achievements(steamid, RUST_APP_ID)
+            
+            # Build comprehensive stats object
+            return PlayerStats(
+                persona_name=player_summary.get("personaname", "Unknown"),
+                profile_url=player_summary.get("profileurl", ""),
+                rust_playtime_hours=rust_playtime,
+                kills=rust_stats.get("kill_player", 0),
+                deaths=rust_stats.get("deaths", 0),
+                bullets_fired=rust_stats.get("bullet_fired", 0),
+                bullets_hit=rust_stats.get("bullet_hit_player", 0),
+                headshots=rust_stats.get("headshot", 0),
+                wood_gathered=rust_stats.get("harvested_wood", 0),
+                stone_gathered=rust_stats.get("harvested_stones", 0),
+                metal_gathered=rust_stats.get("acquired_metal.ore", 0),
+                barrels_destroyed=rust_stats.get("destroyed_barrels", 0),
+                achievements=achievements
+            )
+            
+        except (SteamAPIError, KeyError) as e:
+            logger.error(f"Error fetching comprehensive stats: {e}")
+            return PlayerStats()  # Return empty stats on error
+    
+    async def get_battlemetrics_servers(self, bm_url: str) -> List[str]:
+        """Get top servers from BattleMetrics URL."""
+        player_id = self.bm_client.extract_player_id_from_url(bm_url)
+        if not player_id:
+            logger.warning(f"Could not extract player ID from URL: {bm_url}")
+            return []
+        
+        return await self.bm_client.get_player_servers(player_id)
+    
+    def create_stats_embeds(self, stats: PlayerStats, language: Language = Language.ENGLISH) -> discord.Embed:
+        """Create Discord embed for player statistics."""
+        if language == Language.ENGLISH:
+            embed = discord.Embed(
+                title=f"{stats.persona_name}'s Stats",
+                color=discord.Color.blue()
+            )
+            
+            embed.add_field(
+                name="⏱️ Hours Played (Rust)",
+                value=TextFormatter.format_value(stats.rust_playtime_hours),
+                inline=True
+            )
+            embed.add_field(
+                name="🔪 Kills",
+                value=TextFormatter.format_value(stats.kills),
+                inline=True
+            )
+            embed.add_field(
+                name="💀 Deaths",
+                value=TextFormatter.format_value(stats.deaths),
+                inline=True
+            )
+            embed.add_field(
+                name="📊 K/D Ratio",
+                value=TextFormatter.format_value(stats.kd_ratio) if stats.kd_ratio else "`N/A`",
+                inline=True
+            )
+            embed.add_field(
+                name="🔫 Bullets Fired",
+                value=TextFormatter.format_value(stats.bullets_fired),
+                inline=True
+            )
+            embed.add_field(
+                name="🎯 Bullets Hit",
+                value=TextFormatter.format_value(stats.bullets_hit),
+                inline=True
+            )
+            embed.add_field(
+                name="✅ Accuracy %",
+                value=f"`{stats.accuracy_percentage:.2f}%`" if stats.accuracy_percentage else "`N/A`",
+                inline=True
+            )
+            embed.add_field(
+                name="💥 Headshots",
+                value=TextFormatter.format_value(stats.headshots),
+                inline=True
+            )
+            embed.add_field(
+                name="🎯 Headshot %",
+                value=f"`{stats.headshot_percentage:.2f}%`" if stats.headshot_percentage else "`N/A`",
+                inline=True
+            )
+            embed.add_field(
+                name="🪵 Wood Gathered",
+                value=TextFormatter.format_value(stats.wood_gathered),
+                inline=True
+            )
+            embed.add_field(
+                name="🪨 Stone Gathered",
+                value=TextFormatter.format_value(stats.stone_gathered),
+                inline=True
+            )
+            embed.add_field(
+                name="⚙️ Metal Gathered",
+                value=TextFormatter.format_value(stats.metal_gathered),
+                inline=True
+            )
+            embed.add_field(
+                name="🛢️ Barrels Destroyed",
+                value=TextFormatter.format_value(stats.barrels_destroyed),
+                inline=True
+            )
+            embed.add_field(
+                name="🏆 Achievements",
+                value=f"`{stats.achievements}`",
+                inline=False
+            )
+            embed.add_field(
+                name="🔗 Steam Profile",
+                value=stats.profile_url,
+                inline=False
+            )
+            
+        else:  # Russian
+            embed = discord.Embed(
+                title=f"Статистика игрока {stats.persona_name}",
+                color=discord.Color.blue()
+            )
+            
+            embed.add_field(
+                name="⏱️ Часы в игре (Rust)",
+                value=TextFormatter.format_value(stats.rust_playtime_hours),
+                inline=True
+            )
+            embed.add_field(
+                name="🔪 Убийства",
+                value=TextFormatter.format_value(stats.kills),
+                inline=True
+            )
+            embed.add_field(
+                name="💀 Смерти",
+                value=TextFormatter.format_value(stats.deaths),
+                inline=True
+            )
+            embed.add_field(
+                name="📊 K/D соотношение",
+                value=TextFormatter.format_value(stats.kd_ratio) if stats.kd_ratio else "`N/A`",
+                inline=True
+            )
+            embed.add_field(
+                name="🔫 Выстрелы",
+                value=TextFormatter.format_value(stats.bullets_fired),
+                inline=True
+            )
+            embed.add_field(
+                name="🎯 Попадания",
+                value=TextFormatter.format_value(stats.bullets_hit),
+                inline=True
+            )
+            embed.add_field(
+                name="✅ Точность %",
+                value=f"`{stats.accuracy_percentage:.2f}%`" if stats.accuracy_percentage else "`N/A`",
+                inline=True
+            )
+            embed.add_field(
+                name="💥 Хедшоты",
+                value=TextFormatter.format_value(stats.headshots),
+                inline=True
+            )
+            embed.add_field(
+                name="🎯 % Хедшотов",
+                value=f"`{stats.headshot_percentage:.2f}%`" if stats.headshot_percentage else "`N/A`",
+                inline=True
+            )
+            embed.add_field(
+                name="🪵 Собрано дерева",
+                value=TextFormatter.format_value(stats.wood_gathered),
+                inline=True
+            )
+            embed.add_field(
+                name="🪨 Собрано камня",
+                value=TextFormatter.format_value(stats.stone_gathered),
+                inline=True
+            )
+            embed.add_field(
+                name="⚙️ Собрано металла",
+                value=TextFormatter.format_value(stats.metal_gathered),
+                inline=True
+            )
+            embed.add_field(
+                name="🛢️ Уничтожено бочек",
+                value=TextFormatter.format_value(stats.barrels_destroyed),
+                inline=True
+            )
+            embed.add_field(
+                name="🏆 Достижения",
+                value=f"`{stats.achievements}`",
+                inline=False
+            )
+            embed.add_field(
+                name="🔗 Профиль Steam",
+                value=stats.profile_url,
+                inline=False
+            )
+        
+        return embed
+
+# ==============================================================================
+# MAIN SERVICE COORDINATOR
+# ==============================================================================
+
+class RustBotService:
+    """Main service coordinator for the Rust Discord bot."""
+    
+    def __init__(self):
+        self.player_stats_service = PlayerStatsService()
+        self.crafting_calculator = CraftingCalculator()
+        self.recycling_calculator = RecyclingCalculator()
+        self.discord_handler = DiscordMessageHandler()
+    
+    async def get_player_stats_embeds(
+        self, 
+        steam_identifier: str,
+        language: Language = Language.ENGLISH
+    ) -> Tuple[Optional[discord.Embed], Optional[discord.Embed]]:
+        """
+        Get player statistics embeds in both languages.
+        Returns (english_embed, russian_embed).
+        """
+        try:
+            steamid = await self.player_stats_service.resolve_steamid(steam_identifier)
+            if not steamid:
+                logger.error(f"Could not resolve Steam identifier: {steam_identifier}")
+                return None, None
+            
+            stats = await self.player_stats_service.get_comprehensive_stats(steamid)
+            
+            english_embed = self.player_stats_service.create_stats_embeds(stats, Language.ENGLISH)
+            russian_embed = self.player_stats_service.create_stats_embeds(stats, Language.RUSSIAN)
+            
+            return english_embed, russian_embed
+            
+        except Exception as e:
+            logger.error(f"Error getting player stats embeds: {e}")
+            return None, None
+    
+    async def get_battlemetrics_servers(self, bm_url: str) -> List[str]:
+        """Get top servers from BattleMetrics URL."""
+        return await self.player_stats_service.get_battlemetrics_servers(bm_url)
+    
+    async def process_external_steam_lookup(
+        self,
+        steamid: str,
+        channel_id: str,
+        token: str,
+        prefix: str,
+        bot_user_id: str,
+        timeout: int = 60
+    ) -> Optional[List[str]]:
+        """
+        Process external Steam lookup through Discord message exchange.
+        Returns list of top servers or None on failure.
+        """
+        try:
+            # Send message to external channel
+            msg_data = await self.discord_handler.send_external_message(
+                steamid, channel_id, token, prefix
+            )
+            
+            if not msg_data:
+                return None
+            
+            # Wait for reply
+            reply_data = await self.discord_handler.wait_for_external_reply(
+                channel_id, msg_data["id"], token, bot_user_id, timeout
+            )
+            
+            if not reply_data:
+                return None
+            
+            # Extract BattleMetrics URL from reply
+            bm_url = self.discord_handler.extract_battlemetrics_url(reply_data)
+            if not bm_url:
+                logger.warning("No BattleMetrics URL found in external reply")
+                return None
+            
+            # Get servers from BattleMetrics
+            return await self.get_battlemetrics_servers(bm_url)
+            
+        except Exception as e:
+            logger.error(f"Error in external Steam lookup: {e}")
+            return None
+    
+        
+        return "\n".join(lines)
+
+# ==============================================================================
+# EXAMPLE USAGE AND TESTING
+# ==============================================================================
+
+async def main():
+    """Example usage of the refactored bot service."""
+    service = RustBotService()
+    
+    # Example: Get player stats
+    try:
+        english_embed, russian_embed = await service.get_player_stats_embeds("steamid64_here")
+        if english_embed:
+            print("English stats embed created successfully")
+        if russian_embed:
+            print("Russian stats embed created successfully")
+    except Exception as e:
+        logger.error(f"Error in stats example: {e}")
+    
